@@ -1,0 +1,6 @@
+{
+  "name": "MovieNest",
+  "description": "Watch videos together with friends in private rooms.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
