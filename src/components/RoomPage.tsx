@@ -1,89 +1,42 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Copy, Pause, Play, RefreshCw, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  ExternalLink,
+  Lock,
+  Pause,
+  Play,
+  RefreshCw,
+  Users,
+} from 'lucide-react';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
 import {
   getInviteLink,
   RoomRecord,
+  SharedLibraryItem,
   supabase,
   updateRoomPlayback,
 } from '../lib/supabase';
+import {
+  fetchYouTubeTitle,
+  loadYouTubeIframeAPI,
+  YTPlayer,
+} from '../lib/youtube';
 import { RoomChat } from './RoomChat';
 
-// Minimal YouTube IFrame Player API types for clean TypeScript usage
-interface YTPlayer {
-  playVideo: () => void;
-  pauseVideo: () => void;
-  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
-  getCurrentTime: () => number;
-  getPlayerState: () => number;
-  destroy: () => void;
-}
-
-interface YTPlayerEvent {
-  data: number;
-  target: YTPlayer;
-}
-
-interface YTNamespace {
-  Player: new (
-    element: HTMLElement | string,
-    options: {
-      width?: string | number;
-      height?: string | number;
-      videoId: string;
-      host?: string;
-      playerVars?: Record<string, string | number>;
-      events?: {
-        onReady?: (event: { target: YTPlayer }) => void;
-        onStateChange?: (event: YTPlayerEvent) => void;
-      };
-    }
-  ) => YTPlayer;
-  PlayerState: {
-    UNSTARTED: number;
-    ENDED: number;
-    PLAYING: number;
-    PAUSED: number;
-    BUFFERING: number;
-    CUED: number;
-  };
-}
-
-declare global {
-  interface Window {
-    YT?: YTNamespace;
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
-
-// Loads the official YouTube IFrame Player API script once and resolves when ready
-let ytApiPromise: Promise<YTNamespace> | null = null;
-function loadYouTubeIframeAPI(): Promise<YTNamespace> {
-  if (window.YT?.Player) {
-    return Promise.resolve(window.YT);
-  }
-  if (ytApiPromise) {
-    return ytApiPromise;
-  }
-
-  ytApiPromise = new Promise((resolve) => {
-    const previousReady = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      if (previousReady) previousReady();
-      if (window.YT) resolve(window.YT);
+function resolveRoomVideo(videoId: string, sharedLibrary: SharedLibraryItem[]) {
+  const fromShared = sharedLibrary.find((v) => v.video_id === videoId);
+  if (fromShared) {
+    return {
+      title: fromShared.title,
+      meta: fromShared.category,
+      youtubeId: fromShared.video_id,
+      needsTitleLookup: false,
     };
+  }
 
-    const script = document.createElement('script');
-    script.src = 'https://www.youtube.com/iframe_api';
-    script.async = true;
-    document.head.appendChild(script);
-  });
-
-  return ytApiPromise;
-}
-
-function resolveRoomVideo(videoId: string) {
   const fromLibrary = LIBRARY_VIDEOS.find(
     (v) => v.id === videoId || v.youtubeId === videoId
   );
@@ -92,6 +45,7 @@ function resolveRoomVideo(videoId: string) {
       title: fromLibrary.title,
       meta: `${fromLibrary.category} · ${fromLibrary.duration}`,
       youtubeId: fromLibrary.youtubeId,
+      needsTitleLookup: false,
     };
   }
 
@@ -103,13 +57,15 @@ function resolveRoomVideo(videoId: string) {
       title: fromFeatured.title,
       meta: `${fromFeatured.genre} · ${fromFeatured.duration}`,
       youtubeId: fromFeatured.youtubeId,
+      needsTitleLookup: false,
     };
   }
 
   return {
-    title: 'Screening Room Video',
+    title: `YouTube Video (${videoId})`,
     meta: 'Shared room playback',
     youtubeId: videoId || LIBRARY_VIDEOS[0].youtubeId,
+    needsTitleLookup: true,
   };
 }
 
@@ -124,10 +80,11 @@ function formatSeconds(totalSeconds: number): string {
 
 interface RoomPageProps {
   room: RoomRecord;
+  sharedLibrary: SharedLibraryItem[];
   onBack: () => void;
 }
 
-export function RoomPage({ room, onBack }: RoomPageProps) {
+export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
   const [copied, setCopied] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'synced' | 'reconnecting'>('connecting');
   const [peopleCount, setPeopleCount] = useState(1);
@@ -139,6 +96,8 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
     positionSeconds: room.position_seconds,
   });
   const [playerReady, setPlayerReady] = useState(false);
+  const [embedBlocked, setEmbedBlocked] = useState(false);
+  const [resolvedTitle, setResolvedTitle] = useState<string | null>(null);
 
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -168,8 +127,24 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
       : `viewer-${Math.random().toString(36).slice(2, 10)}`
   );
 
-  const video = resolveRoomVideo(room.video_id);
+  const video = resolveRoomVideo(room.video_id, sharedLibrary);
+  const displayVideoTitle = resolvedTitle ?? video.title;
   const inviteLink = getInviteLink(room.code);
+
+  // If the room uses a raw YouTube ID not yet in our loaded lists, fetch its title via oEmbed
+  useEffect(() => {
+    setResolvedTitle(null);
+    if (!video.needsTitleLookup) return;
+
+    let cancelled = false;
+    fetchYouTubeTitle(video.youtubeId).then((fetched) => {
+      if (!cancelled) setResolvedTitle(fetched);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [video.youtubeId, video.needsTitleLookup]);
 
   // Push local play/pause/seek state to Supabase
   const pushLocalState = async (isPlaying: boolean, positionSeconds: number) => {
@@ -233,6 +208,7 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
   useEffect(() => {
     let cancelled = false;
     setPlayerReady(false);
+    setEmbedBlocked(false);
 
     loadYouTubeIframeAPI().then((YT) => {
       if (cancelled || !playerMountRef.current) return;
@@ -287,6 +263,12 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
               void pushLocalState(false, currentTime);
             }
           },
+          onError: (event) => {
+            // YouTube error 101 or 150 means the video owner disabled embedding
+            if (!cancelled && (event.data === 101 || event.data === 150)) {
+              setEmbedBlocked(true);
+            }
+          },
         },
       });
     });
@@ -309,7 +291,7 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
 
   // 2. Detect timeline seeks (when scrubbing while playing or paused)
   useEffect(() => {
-    if (!playerReady) return;
+    if (!playerReady || embedBlocked) return;
 
     const intervalId = window.setInterval(() => {
       const player = playerRef.current;
@@ -342,7 +324,7 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
     }, 500);
 
     return () => window.clearInterval(intervalId);
-  }, [playerReady, room.id]);
+  }, [playerReady, embedBlocked, room.id]);
 
   // 3. Subscribe to Supabase Realtime row updates and Realtime Presence for this room
   useEffect(() => {
@@ -407,8 +389,7 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      // Fallback if clipboard API is unavailable
     }
   };
 
@@ -471,7 +452,7 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
             {room.name}
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Now playing: <span className="text-slate-200">{video.title}</span>
+            Now playing: <span className="text-slate-200">{displayVideoTitle}</span>
             <span className="mx-2" aria-hidden="true">
               ·
             </span>
@@ -517,48 +498,76 @@ export function RoomPage({ room, onBack }: RoomPageProps) {
       {/* Responsive layout: stacked under video on phones, beside video on laptops */}
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-stretch">
         <div className="lg:col-span-8 flex flex-col">
-          {/* Responsive 16:9 YouTube IFrame API mount */}
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-black shadow-2xl">
-            <div ref={playerMountRef} className="relative aspect-video w-full" />
+          {/* Responsive 16:9 YouTube IFrame API mount or Embed Fallback */}
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0D121F] shadow-2xl">
+            {embedBlocked ? (
+              <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#111625]">
+                  <Lock className="h-5 w-5 text-amber-400" aria-hidden="true" />
+                </div>
+                <div className="max-w-md space-y-1.5">
+                  <p className="font-display text-lg font-semibold text-slate-100">
+                    This video&apos;s owner blocks embedding
+                  </p>
+                  <p className="text-sm text-slate-400">
+                    YouTube doesn&apos;t allow this video to play inside external apps. You can
+                    open it directly on YouTube instead.
+                  </p>
+                </div>
+                <a
+                  href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400"
+                >
+                  <span>Open on YouTube</span>
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                </a>
+              </div>
+            ) : (
+              <div ref={playerMountRef} className="relative aspect-video w-full bg-black" />
+            )}
           </div>
 
           {/* Mobile-friendly synced playback controls bar */}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#111625] px-4 py-3">
-            <div className="flex items-center gap-3">
+          {!embedBlocked && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#111625] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleTogglePlayPause}
+                  disabled={!playerReady}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 disabled:opacity-50 cursor-pointer"
+                >
+                  {roomState.isPlaying ? (
+                    <>
+                      <Pause className="h-4 w-4 fill-current" aria-hidden="true" />
+                      <span>Pause for All</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+                      <span>Play for All</span>
+                    </>
+                  )}
+                </button>
+
+                <span className="font-mono text-xs text-slate-300 tabular-nums">
+                  Room time: {formatSeconds(roomState.positionSeconds)}
+                </span>
+              </div>
+
               <button
                 type="button"
-                onClick={handleTogglePlayPause}
+                onClick={handleManualResync}
                 disabled={!playerReady}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 disabled:opacity-50 cursor-pointer"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/15 bg-[#161D30] px-3.5 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-white/30 disabled:opacity-50 cursor-pointer"
               >
-                {roomState.isPlaying ? (
-                  <>
-                    <Pause className="h-4 w-4 fill-current" aria-hidden="true" />
-                    <span>Pause for All</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4 fill-current" aria-hidden="true" />
-                    <span>Play for All</span>
-                  </>
-                )}
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Sync Player</span>
               </button>
-
-              <span className="font-mono text-xs text-slate-300 tabular-nums">
-                Room time: {formatSeconds(roomState.positionSeconds)}
-              </span>
             </div>
-
-            <button
-              type="button"
-              onClick={handleManualResync}
-              disabled={!playerReady}
-              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/15 bg-[#161D30] px-3.5 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-white/30 disabled:opacity-50 cursor-pointer"
-            >
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Sync Player</span>
-            </button>
-          </div>
+          )}
         </div>
 
         <div className="lg:col-span-4">

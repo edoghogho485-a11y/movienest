@@ -7,28 +7,27 @@ import {
   findRoomByCode,
   getInviteLink,
   RoomRecord,
+  SharedLibraryItem,
 } from '../lib/supabase';
+import { PastedYouTubeVideo, PasteYouTubeBar } from './PasteYouTubeBar';
 
 export type ModalMode = 'create' | 'join' | null;
 
 export interface RoomVideoOption {
   id: string;
   title: string;
-  duration: string;
+  duration?: string;
   thumbnail: string;
   youtubeId?: string;
 }
 
-const ALL_VIDEO_OPTIONS: RoomVideoOption[] = [
-  ...LIBRARY_VIDEOS,
-  ...FEATURED_VIDEOS,
-];
-
 interface RoomModalProps {
   mode: ModalMode;
   initialVideo: RoomVideoOption | null;
+  sharedLibrary: SharedLibraryItem[];
   onClose: () => void;
   onOpenRoom: (room: RoomRecord) => void;
+  onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
 
 function extractRoomCode(input: string): string {
@@ -47,10 +46,17 @@ function extractRoomCode(input: string): string {
   return trimmed.toUpperCase();
 }
 
-export function RoomModal({ mode, initialVideo, onClose, onOpenRoom }: RoomModalProps) {
+export function RoomModal({
+  mode,
+  initialVideo,
+  sharedLibrary,
+  onClose,
+  onOpenRoom,
+  onSavedToLibrary,
+}: RoomModalProps) {
   const [roomName, setRoomName] = useState('Friday Movie Night');
   const [selectedVideoId, setSelectedVideoId] = useState(
-    initialVideo?.id ?? ALL_VIDEO_OPTIONS[0].id
+    initialVideo?.youtubeId ?? initialVideo?.id ?? LIBRARY_VIDEOS[0].id
   );
   const [joinCode, setJoinCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -58,11 +64,18 @@ export function RoomModal({ mode, initialVideo, onClose, onOpenRoom }: RoomModal
   const [createdRoom, setCreatedRoom] = useState<RoomRecord | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Sync selected video whenever modal opens with a specific video or resets
   useEffect(() => {
-    if (initialVideo) {
-      setSelectedVideoId(initialVideo.id);
+    if (mode === 'create') {
+      if (initialVideo) {
+        setSelectedVideoId(initialVideo.youtubeId ?? initialVideo.id);
+      } else {
+        setSelectedVideoId(
+          sharedLibrary[0]?.video_id ?? LIBRARY_VIDEOS[0].id
+        );
+      }
     }
-  }, [initialVideo]);
+  }, [mode, initialVideo, sharedLibrary]);
 
   useEffect(() => {
     if (!mode) {
@@ -84,14 +97,13 @@ export function RoomModal({ mode, initialVideo, onClose, onOpenRoom }: RoomModal
 
   if (!mode) return null;
 
-  const handleCreateSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const createRoomForVideoId = async (videoIdToSave: string) => {
     setErrorMsg('');
     setSubmitting(true);
 
     const { room, error } = await createRoomInSupabase({
       name: roomName,
-      videoId: selectedVideoId,
+      videoId: videoIdToSave,
     });
 
     setSubmitting(false);
@@ -102,6 +114,17 @@ export function RoomModal({ mode, initialVideo, onClose, onOpenRoom }: RoomModal
     }
 
     setCreatedRoom(room);
+  };
+
+  const handleCreateSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    await createRoomForVideoId(selectedVideoId);
+  };
+
+  // Triggered when user clicks "Create Room with this" inside the modal's Paste-a-Link bar
+  const handleCreateWithPastedYouTube = async (pasted: PastedYouTubeVideo) => {
+    setSelectedVideoId(pasted.videoId);
+    await createRoomForVideoId(pasted.videoId);
   };
 
   const handleJoinSubmit = async (e: FormEvent) => {
@@ -141,10 +164,19 @@ export function RoomModal({ mode, initialVideo, onClose, onOpenRoom }: RoomModal
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      // Clipboard API unavailable
     }
   };
+
+  // Check if selectedVideoId is already represented in one of the dropdown lists
+  const isKnownDropdownOption =
+    sharedLibrary.some((item) => item.video_id === selectedVideoId) ||
+    LIBRARY_VIDEOS.some(
+      (v) => v.id === selectedVideoId || v.youtubeId === selectedVideoId
+    ) ||
+    FEATURED_VIDEOS.some(
+      (v) => v.id === selectedVideoId || v.youtubeId === selectedVideoId
+    );
 
   return (
     <div
@@ -156,7 +188,7 @@ export function RoomModal({ mode, initialVideo, onClose, onOpenRoom }: RoomModal
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-lg rounded-t-2xl border border-white/15 bg-[#0D121F] p-5 shadow-2xl sm:rounded-2xl sm:p-6">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-white/15 bg-[#0D121F] p-5 shadow-2xl sm:rounded-2xl sm:p-6">
         <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
           <h2
             id="room-modal-title"
@@ -233,77 +265,106 @@ export function RoomModal({ mode, initialVideo, onClose, onOpenRoom }: RoomModal
             </div>
           </div>
         ) : mode === 'create' ? (
-          <form onSubmit={handleCreateSubmit} className="mt-5 space-y-4">
-            <div>
-              <label
-                htmlFor="room-name-input"
-                className="block text-sm font-medium text-slate-200"
-              >
-                Room name
-              </label>
-              <input
-                id="room-name-input"
-                type="text"
-                value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
-                placeholder="Friday Movie Night"
-                className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#111625] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
-              />
-            </div>
+          <div className="mt-5 space-y-4">
+            <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="room-name-input"
+                  className="block text-sm font-medium text-slate-200"
+                >
+                  Room name
+                </label>
+                <input
+                  id="room-name-input"
+                  type="text"
+                  value={roomName}
+                  onChange={(e) => setRoomName(e.target.value)}
+                  placeholder="Friday Movie Night"
+                  className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#111625] px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+              </div>
 
-            <div>
-              <label
-                htmlFor="video-select"
-                className="block text-sm font-medium text-slate-200"
-              >
-                Choose a video
-              </label>
-              <select
-                id="video-select"
-                value={selectedVideoId}
-                onChange={(e) => setSelectedVideoId(e.target.value)}
-                className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#111625] px-3.5 py-2.5 text-sm text-slate-100 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
-              >
-                <optgroup label="Video Library (Free Open Movies)">
-                  {LIBRARY_VIDEOS.map((video) => (
-                    <option key={video.id} value={video.id}>
-                      {video.title} ({video.duration})
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Featured Picks">
-                  {FEATURED_VIDEOS.map((video) => (
-                    <option key={video.id} value={video.id}>
-                      {video.title} ({video.duration})
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </div>
+              <div>
+                <label
+                  htmlFor="video-select"
+                  className="block text-sm font-medium text-slate-200"
+                >
+                  Choose a video
+                </label>
+                <select
+                  id="video-select"
+                  value={selectedVideoId}
+                  onChange={(e) => setSelectedVideoId(e.target.value)}
+                  className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#111625] px-3.5 py-2.5 text-sm text-slate-100 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                >
+                  {!isKnownDropdownOption && initialVideo && (
+                    <optgroup label="Selected YouTube Video">
+                      <option value={initialVideo.youtubeId ?? initialVideo.id}>
+                        {initialVideo.title}
+                      </option>
+                    </optgroup>
+                  )}
+                  {sharedLibrary.length > 0 && (
+                    <optgroup label="Shared Library">
+                      {sharedLibrary.map((item) => (
+                        <option key={item.id} value={item.video_id}>
+                          {item.title} ({item.category})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Sample Videos (Free Open Movies)">
+                    {LIBRARY_VIDEOS.map((video) => (
+                      <option key={video.id} value={video.id}>
+                        {video.title} ({video.duration})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Featured Picks">
+                    {FEATURED_VIDEOS.map((video) => (
+                      <option key={video.id} value={video.id}>
+                        {video.title} ({video.duration})
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
 
-            {errorMsg && (
-              <p className="text-xs text-amber-400" role="alert">
-                {errorMsg}
-              </p>
-            )}
+              {errorMsg && (
+                <p className="text-xs text-amber-400" role="alert">
+                  {errorMsg}
+                </p>
+              )}
 
-            <div className="pt-2 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={onClose}
-                className="min-h-[44px] rounded-lg border border-white/15 px-4 py-2.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/5 cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="min-h-[44px] rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 disabled:opacity-60 cursor-pointer"
-              >
-                {submitting ? 'Creating Room...' : 'Create Room'}
-              </button>
-            </div>
-          </form>
+              <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="min-h-[44px] rounded-lg border border-white/15 px-4 py-2.5 text-sm font-medium text-slate-200 transition-colors hover:bg-white/5 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="min-h-[44px] rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 disabled:opacity-60 cursor-pointer"
+                >
+                  {submitting ? 'Creating Room...' : 'Create Room'}
+                </button>
+              </div>
+            </form>
+
+            {/* Paste-a-Link bar inside the Create Room pop-up */}
+            <PasteYouTubeBar
+              variant="modal"
+              inputId="modal-paste-youtube-input"
+              onCreateRoomWithVideo={handleCreateWithPastedYouTube}
+              onSavedToLibrary={(savedItem) => {
+                onSavedToLibrary(savedItem);
+                setSelectedVideoId(savedItem.video_id);
+              }}
+            />
+          </div>
         ) : (
           <form onSubmit={handleJoinSubmit} className="mt-5 space-y-4">
             <div>
@@ -321,8 +382,8 @@ export function RoomModal({ mode, initialVideo, onClose, onOpenRoom }: RoomModal
                   setJoinCode(e.target.value);
                   if (errorMsg) setErrorMsg('');
                 }}
-                placeholder="e.g. NEST-482"
-                className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#111625] px-3.5 py-2.5 font-mono text-sm uppercase text-slate-100 placeholder:normal-case placeholder:font-sans placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                placeholder="e.g. NEST-7K4M2Q"
+                className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#111625] px-3.5 py-2.5 font-mono text-sm text-slate-100 placeholder:font-sans placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
               />
               {errorMsg && (
                 <p className="mt-1.5 text-xs text-amber-400" role="alert">
