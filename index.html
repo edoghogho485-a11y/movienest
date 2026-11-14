@@ -27,7 +27,11 @@
       href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..600;1,9..40,400..600&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
-  </head>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#e50914">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js'); }); }</script>
+</head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
