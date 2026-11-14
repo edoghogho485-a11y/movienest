@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Play, Search, Users, X } from 'lucide-react';
+import { Bookmark, Play, Search, Users, X } from 'lucide-react';
 import { Sidebar, MobileBottomNav, NavSection } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { HeroBanner } from './components/HeroBanner';
+import { ContinueWatchingRow } from './components/ContinueWatchingRow';
+import { MyListPage } from './components/MyListPage';
 import { CategoryJumpTarget, CategoryTiles } from './components/CategoryTiles';
 import { GenreRows } from './components/GenreRows';
 import { GenreGridView, SeeAllViewData } from './components/GenreGridView';
@@ -15,9 +17,11 @@ import { WatchChoiceModal } from './components/WatchChoiceModal';
 import { ShareSheet } from './components/ShareSheet';
 import { UsernameModal, UsernameModalMode } from './components/UsernameModal';
 import { YouTubeMovieCard } from './components/YouTubeMovieCard';
+import { useLocalLists, useWatchLaterToast } from './hooks/useLocalLists';
 import { LIBRARY_VIDEOS } from './data/libraryVideos';
 import { FEATURED_VIDEOS } from './data/videos';
 import { ArchiveMovieItem, getArchiveThumbnail } from './lib/archive';
+import { WatchHistoryItem, WatchLaterItem } from './lib/localLists';
 import {
   getArchiveWatchAloneLink,
   getSiteShareLink,
@@ -165,6 +169,17 @@ export default function App() {
   // Watch Together vs Watch Alone chooser sheet
   const [choiceVideo, setChoiceVideo] = useState<RoomVideoOption | null>(null);
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
+
+  // Device-only Watch Later & Continue Watching / History lists
+  const {
+    watchLater,
+    history,
+    continueWatching,
+    removeFromWatchLater,
+    removeFromHistory,
+    clearAllHistory,
+  } = useLocalLists();
+  const watchLaterToast = useWatchLaterToast();
 
   const [watchingVideo, setWatchingVideo] = useState<WatchableVideo | null>(() => {
     const archiveId = getArchiveIdFromUrl();
@@ -328,32 +343,87 @@ export default function App() {
     });
   }, [watchingVideo]);
 
-  // Join Supabase Realtime presence on channel "lobby" (skipped during Watch Alone solo playback)
+  // Join Supabase Realtime presence on channel "lobby" ONLY when on the home page
+  const isHomePage =
+    !roomLoading &&
+    !roomNotFoundCode &&
+    !roomLockedCode &&
+    !activeRoom &&
+    !watchingVideo &&
+    !seeAllData &&
+    activeNav === 'home';
+  const lobbyChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
   useEffect(() => {
-    if (watchingVideo) return;
+    if (!isHomePage) return;
 
-    const channel = supabase.channel('lobby', {
-      config: {
-        presence: { key: lobbyKeyRef.current },
-      },
-    });
+    let isEffectActive = true;
 
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const uniqueClients = Object.keys(state).length;
-        setOnlineCount(Math.max(1, uniqueClients));
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({ online: true });
-        }
+    const setupLobby = async () => {
+      // Remove any stale "lobby" channel first (handles StrictMode double-mount cleanly)
+      const existingLobby = supabase
+        .getChannels()
+        .filter((c) => c.topic === 'realtime:lobby');
+      if (existingLobby.length > 0) {
+        await Promise.all(
+          existingLobby.map(async (c) => {
+            try {
+              await supabase.removeChannel(c);
+            } catch {
+              // Ignore unsubscribe error and force teardown below
+            }
+            if (supabase.getChannels().includes(c)) {
+              try {
+                (c as unknown as { teardown?: () => void }).teardown?.();
+              } catch {
+                // Ignore teardown error
+              }
+            }
+          })
+        );
+      }
+
+      if (!isEffectActive) return;
+
+      const channel = supabase.channel('lobby', {
+        config: {
+          presence: { key: lobbyKeyRef.current },
+        },
       });
+      lobbyChannelRef.current = channel;
+
+      // Register all listeners BEFORE calling .subscribe()
+      channel
+        .on('presence', { event: 'sync' }, () => {
+          if (!isEffectActive) return;
+          const state = channel.presenceState();
+          const uniqueClients = Object.keys(state).length;
+          setOnlineCount(Math.max(1, uniqueClients));
+        })
+        .subscribe(async (status) => {
+          if (!isEffectActive) return;
+          if (status === 'SUBSCRIBED') {
+            try {
+              await channel.track({ online: true });
+            } catch {
+              // Ignore transient track errors
+            }
+          }
+        });
+    };
+
+    void setupLobby();
 
     return () => {
-      void supabase.removeChannel(channel);
+      isEffectActive = false;
+      const channel = lobbyChannelRef.current;
+      lobbyChannelRef.current = null;
+      if (channel) {
+        void channel.untrack().catch(() => {});
+        void supabase.removeChannel(channel);
+      }
     };
-  }, [Boolean(watchingVideo)]);
+  }, [isHomePage]);
 
   const requireUsernameBefore = (action: () => void, dismissible = true) => {
     if (userProfileRef.current) {
@@ -443,7 +513,62 @@ export default function App() {
       duration: option.duration,
       source: option.source,
       videoUrl: option.videoUrl,
+      initialPositionSeconds: option.positionSeconds,
     });
+  };
+
+  const openChoiceForLocalItem = (
+    item: WatchLaterItem | WatchHistoryItem,
+    resumeSeconds = 0
+  ) => {
+    const safeResume = resumeSeconds > 0 ? Math.floor(resumeSeconds) : 0;
+    setChoiceVideo({
+      id: item.id,
+      title: item.title,
+      thumbnail:
+        item.thumbnail ||
+        (item.source === 'archive'
+          ? getArchiveThumbnail(item.id)
+          : getYouTubeThumbnail(item.id)),
+      youtubeId: item.id,
+      source: item.source,
+      videoUrl: item.video_url,
+      positionSeconds: safeResume > 0 ? safeResume : undefined,
+    });
+  };
+
+  const openCreateRoomForLocalItem = (
+    item: WatchLaterItem | WatchHistoryItem,
+    resumeSeconds = 0
+  ) => {
+    openCreateRoom(
+      {
+        id: item.id,
+        title: item.title,
+        thumbnail:
+          item.thumbnail ||
+          (item.source === 'archive'
+            ? getArchiveThumbnail(item.id)
+            : getYouTubeThumbnail(item.id)),
+        youtubeId: item.id,
+        source: item.source,
+        videoUrl: item.video_url,
+        positionSeconds: resumeSeconds > 0 ? Math.floor(resumeSeconds) : undefined,
+      },
+      resumeSeconds > 0 ? Math.floor(resumeSeconds) : 0
+    );
+  };
+
+  const openShareForLocalItem = (item: WatchLaterItem | WatchHistoryItem) => {
+    if (item.source === 'archive') {
+      openShareForArchive({
+        identifier: item.id,
+        title: item.title,
+        thumbnail: item.thumbnail,
+      });
+    } else {
+      openShareForVideo(item.id, item.title);
+    }
   };
 
   const openChoiceForSharedLibrary = (item: SharedLibraryItem) => {
@@ -1026,6 +1151,24 @@ export default function App() {
                     ))}
                   </div>
                 </section>
+              ) : activeNav === 'my-list' ? (
+                <MyListPage
+                  watchLater={watchLater}
+                  history={history}
+                  onWatchWatchLater={(item) => openChoiceForLocalItem(item, 0)}
+                  onCreateRoomWatchLater={(item) => openCreateRoomForLocalItem(item, 0)}
+                  onShareWatchLater={openShareForLocalItem}
+                  onRemoveWatchLater={removeFromWatchLater}
+                  onWatchHistory={(item) =>
+                    openChoiceForLocalItem(item, item.finished ? 0 : item.position)
+                  }
+                  onCreateRoomHistory={(item) =>
+                    openCreateRoomForLocalItem(item, item.finished ? 0 : item.position)
+                  }
+                  onShareHistory={openShareForLocalItem}
+                  onRemoveHistory={removeFromHistory}
+                  onClearHistory={clearAllHistory}
+                />
               ) : (
                 <>
                   {activeNav === 'home' && (
@@ -1037,6 +1180,12 @@ export default function App() {
                           openShareForVideo(video.youtubeId ?? video.id, video.title)
                         }
                         onInviteFriendsSite={openShareForSite}
+                      />
+                      <ContinueWatchingRow
+                        items={continueWatching}
+                        onWatch={(item) => openChoiceForLocalItem(item, item.position)}
+                        onCreateRoom={(item) => openCreateRoomForLocalItem(item, item.position)}
+                        onShare={openShareForLocalItem}
                       />
                       <PasteYouTubeBar
                         variant="home"
@@ -1137,13 +1286,36 @@ export default function App() {
         </main>
 
         <footer className="mt-10 border-t border-[#2a2a33]">
-          <div className="flex flex-col items-start justify-between gap-2 px-4 py-6 text-sm text-zinc-400 sm:flex-row sm:items-center sm:px-6 lg:px-8">
-            <p className="font-display font-semibold text-white">
-              Movie<span className="text-[#E50914]">Nest</span>
-            </p>
-            <p className="text-xs text-zinc-500">
-              MovieNest doesn&apos;t host any videos. Videos stream from YouTube and the Internet Archive.
-            </p>
+          <div className="flex flex-col items-start justify-between gap-3 px-4 py-6 text-sm text-zinc-400 sm:flex-row sm:items-center sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-1">
+              <p className="font-display font-semibold text-white">
+                Movie<span className="text-[#E50914]">Nest</span>
+              </p>
+              <p className="text-xs text-zinc-500">
+                MovieNest doesn&apos;t host any videos. Videos stream from YouTube and the Internet Archive.
+              </p>
+            </div>
+
+            <nav aria-label="Footer links" className="flex flex-wrap items-center gap-5">
+              <a
+                href="/about.html"
+                className="inline-flex min-h-[36px] items-center text-xs font-medium text-zinc-400 transition-colors hover:text-[#E50914] hover:underline underline-offset-4"
+              >
+                About
+              </a>
+              <a
+                href="/terms.html"
+                className="inline-flex min-h-[36px] items-center text-xs font-medium text-zinc-400 transition-colors hover:text-[#E50914] hover:underline underline-offset-4"
+              >
+                Terms
+              </a>
+              <a
+                href="/privacy.html"
+                className="inline-flex min-h-[36px] items-center text-xs font-medium text-zinc-400 transition-colors hover:text-[#E50914] hover:underline underline-offset-4"
+              >
+                Privacy
+              </a>
+            </nav>
           </div>
         </footer>
       </div>
@@ -1155,7 +1327,7 @@ export default function App() {
         onClose={() => setChoiceVideo(null)}
         onWatchTogether={(video) => {
           setChoiceVideo(null);
-          openCreateRoom(video);
+          openCreateRoom(video, video.positionSeconds ?? 0);
         }}
         onWatchAlone={enterWatchAloneFromOption}
       />
@@ -1215,6 +1387,19 @@ export default function App() {
           }
         }}
       />
+
+      {watchLaterToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none fixed bottom-16 left-1/2 z-50 -translate-x-1/2 lg:bottom-6"
+        >
+          <div className="inline-flex items-center gap-2 rounded-xl border border-[#E50914]/60 bg-[#14141a] px-4 py-2.5 text-xs font-semibold text-white shadow-lg">
+            <Bookmark className="h-3.5 w-3.5 fill-[#E50914] text-[#E50914]" aria-hidden="true" />
+            <span>{watchLaterToast}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Film, Play, Users, X } from 'lucide-react';
+import { formatClockDuration } from '../lib/localLists';
 import { RoomVideoOption } from './RoomModal';
 
 interface WatchChoiceModalProps {
@@ -95,7 +96,9 @@ export function WatchChoiceModal({
               <div>
                 <p className="font-display text-sm font-semibold">Watch Together</p>
                 <p className="text-xs text-white/85">
-                  Create a private room with invite link &amp; chat
+                  {video.positionSeconds && video.positionSeconds > 0
+                    ? `Start a private room at ${formatClockDuration(video.positionSeconds)}`
+                    : 'Create a private room with invite link & chat'}
                 </p>
               </div>
             </div>
@@ -111,7 +114,9 @@ export function WatchChoiceModal({
               <div>
                 <p className="font-display text-sm font-semibold">Watch Alone</p>
                 <p className="text-xs text-zinc-400">
-                  Solo playback right now, no room or chat
+                  {video.positionSeconds && video.positionSeconds > 0
+                    ? `Resume solo playback at ${formatClockDuration(video.positionSeconds)}`
+                    : 'Solo playback right now, no room or chat'}
                 </p>
               </div>
             </div>

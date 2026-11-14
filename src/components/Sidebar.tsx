@@ -1,6 +1,6 @@
-import { Clapperboard, Film, Home, Users } from 'lucide-react';
+import { Bookmark, Clapperboard, Film, Home, Users } from 'lucide-react';
 
-export type NavSection = 'home' | 'movies' | 'watch-party';
+export type NavSection = 'home' | 'movies' | 'watch-party' | 'my-list';
 
 interface NavItem {
   id: NavSection;
@@ -12,6 +12,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'movies', label: 'Movies', icon: Film },
   { id: 'watch-party', label: 'Watch Party', icon: Users },
+  { id: 'my-list', label: 'My List', icon: Bookmark },
 ];
 
 interface SidebarProps {
@@ -81,7 +82,7 @@ export function MobileBottomNav({ activeNav, onSelectNav }: SidebarProps) {
   return (
     <nav
       aria-label="Mobile navigation"
-      className="fixed inset-x-0 bottom-0 z-30 grid h-14 grid-cols-3 border-t border-[#2a2a33] bg-[#0A0A0E] lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 grid h-14 grid-cols-4 border-t border-[#2a2a33] bg-[#0A0A0E] lg:hidden"
     >
       {NAV_ITEMS.map((item) => {
         const Icon = item.icon;

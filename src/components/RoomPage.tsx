@@ -18,13 +18,15 @@ import {
   Users,
   Video,
 } from 'lucide-react';
-import type { RealtimeChannel } from '@supabase/supabase-js';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
+import { useRoomChannels } from '../hooks/useRoomChannels';
 import {
   fetchArchiveMovieDetails,
+  getArchiveThumbnail,
   isValidArchiveDownloadUrl,
 } from '../lib/archive';
+import { upsertWatchHistory } from '../lib/localLists';
 import { copyTextToClipboard, ShareTarget } from '../lib/share';
 import {
   findRoomByCode,
@@ -37,7 +39,6 @@ import {
   RoomControlsMode,
   RoomRecord,
   SharedLibraryItem,
-  supabase,
   updateRoomPlayback,
   updateRoomQueue,
   updateRoomSettings,
@@ -45,11 +46,13 @@ import {
 } from '../lib/supabase';
 import {
   fetchYouTubeTitle,
+  getYouTubeThumbnail,
   loadYouTubeIframeAPI,
   YTPlayer,
 } from '../lib/youtube';
+import { BookmarkButton } from './BookmarkButton';
 import { RoomChat } from './RoomChat';
-import { RoomParticipant, RoomPeopleList } from './RoomPeopleList';
+import { RoomPeopleList } from './RoomPeopleList';
 import { RoomQueuePanel } from './RoomQueuePanel';
 import { RoomSettingsModal } from './RoomSettingsModal';
 import {
@@ -72,8 +75,6 @@ interface RoomToast {
   id: string;
   text: string;
 }
-
-type ActivityAction = 'play' | 'pause' | 'seek' | 'video';
 
 function resolveRoomVideo(videoId: string, sharedLibrary: SharedLibraryItem[]) {
   const safeId = typeof videoId === 'string' ? videoId : '';
@@ -196,10 +197,6 @@ export function RoomPage({
 
   const [copied, setCopied] = useState(false);
   const [resyncing, setResyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<'connecting' | 'synced' | 'reconnecting'>(
-    'connecting'
-  );
-  const [participants, setParticipants] = useState<RoomParticipant[]>([]);
   const [roomState, setRoomState] = useState<{
     isPlaying: boolean;
     positionSeconds: number;
@@ -239,7 +236,6 @@ export function RoomPage({
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const htmlVideoRef = useRef<HTMLVideoElement | null>(null);
-  const roomChannelRef = useRef<RealtimeChannel | null>(null);
   const lastReactionAtRef = useRef<number>(0);
 
   // Latest state refs so async callbacks avoid stale closures
@@ -249,22 +245,19 @@ export function RoomPage({
   latestRoomStateRef.current = roomState;
   const latestCanControlRef = useRef(canControlPlayback);
   latestCanControlRef.current = canControlPlayback;
-  const latestUsernameRef = useRef(safeUsername);
-  latestUsernameRef.current = safeUsername;
   const latestIsHostRef = useRef(isHost);
   latestIsHostRef.current = isHost;
 
-  // Loop-prevention refs
+  // Loop-prevention and timer refs
   const isApplyingRemoteRef = useRef(false);
   const remoteResetTimerRef = useRef<number | null>(null);
   const recentSentTimestampsRef = useRef<Set<number>>(new Set());
   const countdownTimersRef = useRef<number[]>([]);
   const autoAdvanceTimerRef = useRef<number | null>(null);
-
-  // Track presence keys so metadata updates (setting name) don't emit false leave/join toasts
-  const hasInitialPresenceSyncRef = useRef(false);
-  const knownPresenceNamesRef = useRef<Map<string, string>>(new Map());
-  const pendingLeaveTimersRef = useRef<Map<string, number>>(new Map());
+  const applyRemoteStateRef = useRef<(isPlaying: boolean, targetSeconds: number) => void>(() => {});
+  const runSyncedCountdownRef = useRef<(targetSeconds: number, initiatedByHost: boolean) => void>(
+    () => {}
+  );
 
   // Track last observed playback position to detect timeline seeks (YouTube)
   const lastTimeCheckRef = useRef<{ time: number; wallMs: number; wasPlaying: boolean }>({
@@ -273,12 +266,103 @@ export function RoomPage({
     wasPlaying: Boolean(currentRoom.is_playing),
   });
 
-  // Unique presence key for this browser tab
-  const clientIdRef = useRef<string>(makeClientOrEventId('viewer'));
-
   const video = resolveRoomVideo(currentRoom.video_id, safeLibrary);
   const displayVideoTitle = resolvedTitle ?? video.title;
   const inviteLink = getInviteLink(currentRoom.code);
+  const currentThumbnail = isArchive
+    ? getArchiveThumbnail(currentRoom.video_id)
+    : getYouTubeThumbnail(video.youtubeId || currentRoom.video_id);
+
+  // Store only movie metadata & timestamps for local Continue Watching (never room code, chat, or username)
+  const latestLocalHistoryMetaRef = useRef({
+    source: (isArchive ? 'archive' : 'youtube') as 'youtube' | 'archive',
+    id: isArchive ? currentRoom.video_id : video.youtubeId || currentRoom.video_id,
+    videoUrl: isArchive ? archiveUrl ?? currentRoom.video_url ?? null : null,
+    title: displayVideoTitle,
+    thumbnail: currentThumbnail,
+  });
+  latestLocalHistoryMetaRef.current = {
+    source: isArchive ? 'archive' : 'youtube',
+    id: isArchive ? currentRoom.video_id : video.youtubeId || currentRoom.video_id,
+    videoUrl: isArchive ? archiveUrl ?? currentRoom.video_url ?? null : null,
+    title: displayVideoTitle,
+    thumbnail: currentThumbnail,
+  };
+  const lastHistoryMetricsRef = useRef<{ position: number; duration: number }>({
+    position: 0,
+    duration: 0,
+  });
+
+  const readRoomHistoryMetrics = useCallback((): {
+    position: number;
+    duration: number;
+    isPlaying: boolean;
+  } => {
+    try {
+      if (latestLocalHistoryMetaRef.current.source === 'archive') {
+        const el = htmlVideoRef.current;
+        if (el) {
+          const pos = Number.isFinite(el.currentTime) ? el.currentTime : 0;
+          const dur = Number.isFinite(el.duration) ? el.duration : 0;
+          if (pos > 0 || dur > 0) {
+            lastHistoryMetricsRef.current = { position: pos, duration: dur };
+          }
+          return {
+            position: pos,
+            duration: dur,
+            isPlaying: !el.paused && !el.ended,
+          };
+        }
+      } else {
+        const player = playerRef.current;
+        if (player && typeof player.getCurrentTime === 'function') {
+          const pos = player.getCurrentTime();
+          const dur = typeof player.getDuration === 'function' ? player.getDuration() : 0;
+          const state = typeof player.getPlayerState === 'function' ? player.getPlayerState() : -1;
+          const safePos = typeof pos === 'number' && Number.isFinite(pos) ? pos : 0;
+          const safeDur = typeof dur === 'number' && Number.isFinite(dur) ? dur : 0;
+          if (safePos > 0 || safeDur > 0) {
+            lastHistoryMetricsRef.current = { position: safePos, duration: safeDur };
+          }
+          return {
+            position: safePos,
+            duration: safeDur,
+            isPlaying: state === 1,
+          };
+        }
+      }
+    } catch {
+      // Fall back to last cached playback metrics
+    }
+    return {
+      position: lastHistoryMetricsRef.current.position,
+      duration: lastHistoryMetricsRef.current.duration,
+      isPlaying: false,
+    };
+  }, []);
+
+  const saveRoomHistoryProgress = useCallback(
+    (markFinished = false) => {
+      const meta = latestLocalHistoryMetaRef.current;
+      if (!meta.id) return;
+      const metrics = readRoomHistoryMetrics();
+      const position = metrics.position > 0 ? metrics.position : lastHistoryMetricsRef.current.position;
+      const duration = metrics.duration > 0 ? metrics.duration : lastHistoryMetricsRef.current.duration;
+      if (position <= 0 && !markFinished) return;
+
+      upsertWatchHistory({
+        source: meta.source,
+        id: meta.id,
+        video_url: meta.videoUrl,
+        title: meta.title,
+        thumbnail: meta.thumbnail,
+        position,
+        duration,
+        markFinished,
+      });
+    },
+    [readRoomHistoryMetrics]
+  );
 
   const showToast = useCallback((text: string) => {
     const id = makeClientOrEventId('toast');
@@ -305,7 +389,7 @@ export function RoomPage({
   }, []);
 
   // Spawn an emoji (with sender's username) that floats up over the video
-  const spawnFloatingReaction = (id: string, emoji: string, sender?: string) => {
+  const spawnFloatingReaction = useCallback((id: string, emoji: string, sender?: string) => {
     const leftPercent = 14 + Math.floor(Math.random() * 72);
     setFloatingReactions((prev) => {
       if (prev.some((item) => item.id === id)) return prev;
@@ -315,26 +399,94 @@ export function RoomPage({
     window.setTimeout(() => {
       setFloatingReactions((prev) => prev.filter((item) => item.id !== id));
     }, 2300);
-  };
+  }, []);
 
-  // Broadcast an activity notice so other people in the room see a toast
-  const broadcastActivity = useCallback(
-    (action: ActivityAction, positionSeconds = 0) => {
-      const actor = latestUsernameRef.current.trim() || 'Someone';
-      void roomChannelRef.current?.send({
-        type: 'broadcast',
-        event: 'activity',
-        payload: {
-          id: makeClientOrEventId('act'),
-          clientId: clientIdRef.current,
-          actor,
-          action,
-          positionSeconds: Math.max(0, Math.floor(positionSeconds)),
-        },
+  // Single shared hook managing "room-db:CODE" and "room-live:CODE" channels for this room
+  const {
+    syncStatus,
+    participants,
+    messages: chatMessages,
+    chatLoading,
+    chatError,
+    sendChatMessage,
+    sendReaction,
+    sendActivity: broadcastActivity,
+    sendCountdown,
+  } = useRoomChannels({
+    roomId: currentRoom.id,
+    roomCode: currentRoom.code,
+    username: safeUsername,
+    isHost,
+    onRoomUpdated: (updated) => {
+      const prevRoom = latestRoomRef.current;
+      const videoChanged =
+        updated.video_id !== prevRoom.video_id ||
+        (updated.source ?? 'youtube') !== (prevRoom.source ?? 'youtube') ||
+        (updated.video_url ?? null) !== (prevRoom.video_url ?? null);
+
+      setCurrentRoom(updated);
+
+      if (videoChanged) {
+        setRoomState({
+          isPlaying: updated.is_playing,
+          positionSeconds: updated.position_seconds,
+        });
+        setRoomTimeSeconds(updated.position_seconds);
+        return;
+      }
+
+      // Ignore the echo of playback updates triggered by our own player
+      const incomingMs = Date.parse(updated.updated_at);
+      if (!Number.isNaN(incomingMs)) {
+        for (const sentMs of recentSentTimestampsRef.current) {
+          if (Math.abs(incomingMs - sentMs) < 250) {
+            return;
+          }
+        }
+      }
+
+      setRoomState({
+        isPlaying: updated.is_playing,
+        positionSeconds: updated.position_seconds,
       });
+      setRoomTimeSeconds(updated.position_seconds);
+      applyRemoteStateRef.current(updated.is_playing, updated.position_seconds);
     },
-    []
-  );
+    onReactionReceived: (payload) => {
+      spawnFloatingReaction(payload.id, payload.emoji, payload.sender);
+    },
+    onActivityReceived: ({ actor, action, positionSeconds }) => {
+      if (action === 'pause') {
+        showToast(`${actor} paused`);
+      } else if (action === 'play') {
+        showToast(`${actor} played`);
+      } else if (action === 'seek') {
+        showToast(`${actor} jumped to ${formatSeconds(positionSeconds)}`);
+      } else if (action === 'video') {
+        showToast(`${actor} changed the movie`);
+      }
+    },
+    onCountdownReceived: (positionSeconds) => {
+      runSyncedCountdownRef.current(positionSeconds, false);
+    },
+    onPresenceNotice: (text) => {
+      showToast(text);
+    },
+  });
+
+  // Clean up local countdown / auto-advance timers when leaving the room
+  useEffect(() => {
+    return () => {
+      for (const timerId of countdownTimersRef.current) {
+        window.clearTimeout(timerId);
+      }
+      countdownTimersRef.current = [];
+      if (autoAdvanceTimerRef.current) {
+        window.clearTimeout(autoAdvanceTimerRef.current);
+        autoAdvanceTimerRef.current = null;
+      }
+    };
+  }, [currentRoom.id]);
 
   // Resolve title (and Archive MP4 URL if needed) whenever the active video changes
   useEffect(() => {
@@ -630,6 +782,9 @@ export function RoomPage({
     [applyRemoteStateToPlayer, pushLocalState]
   );
 
+  applyRemoteStateRef.current = applyRemoteStateToPlayer;
+  runSyncedCountdownRef.current = runSyncedCountdown;
+
   // 1. Initialize YouTube IFrame Player API when source is YouTube
   useEffect(() => {
     if (isArchive || !video.youtubeId) return;
@@ -671,7 +826,14 @@ export function RoomPage({
             }
           },
           onStateChange: (event) => {
-            if (cancelled || isApplyingRemoteRef.current) return;
+            if (cancelled) return;
+            if (event.data === YT.PlayerState.PAUSED) {
+              saveRoomHistoryProgress(false);
+            } else if (event.data === YT.PlayerState.ENDED) {
+              saveRoomHistoryProgress(true);
+            }
+
+            if (isApplyingRemoteRef.current) return;
             if (typeof event?.target?.getCurrentTime !== 'function') return;
 
             const currentTime = event.target.getCurrentTime();
@@ -704,6 +866,7 @@ export function RoomPage({
 
     return () => {
       cancelled = true;
+      saveRoomHistoryProgress(false);
       if (remoteResetTimerRef.current) {
         window.clearTimeout(remoteResetTimerRef.current);
       }
@@ -723,6 +886,7 @@ export function RoomPage({
     applyRemoteStateToPlayer,
     pushLocalState,
     advanceQueueOnEnd,
+    saveRoomHistoryProgress,
   ]);
 
   // 2. Detect YouTube timeline seeks
@@ -785,264 +949,31 @@ export function RoomPage({
     return () => window.clearInterval(timer);
   }, [playerReady, getCurrentPlayerTime]);
 
-  // Keep latest callback refs so the Realtime channel setup runs strictly once per room
-  const applyRemoteStateRef = useRef(applyRemoteStateToPlayer);
-  applyRemoteStateRef.current = applyRemoteStateToPlayer;
-  const runSyncedCountdownRef = useRef(runSyncedCountdown);
-  runSyncedCountdownRef.current = runSyncedCountdown;
-  const showToastRef = useRef(showToast);
-  showToastRef.current = showToast;
-
-  // 4. Subscribe ONCE per room to Supabase Realtime row updates, Presence, and Broadcast events
+  // 4. Save Continue Watching progress every 10 seconds during playback and when leaving the room
   useEffect(() => {
-    if (!currentRoom.id) return;
+    lastHistoryMetricsRef.current = { position: 0, duration: 0 };
 
-    let isEffectActive = true;
-    setSyncStatus('connecting');
-    hasInitialPresenceSyncRef.current = false;
-    knownPresenceNamesRef.current.clear();
-
-    const channel = supabase.channel(`room:${currentRoom.id}`, {
-      config: {
-        presence: { key: clientIdRef.current },
-      },
-    });
-    roomChannelRef.current = channel;
-
-    const syncPresenceList = () => {
-      if (!isEffectActive) return;
-
-      let rawState: Record<string, unknown> = {};
-      try {
-        rawState = (channel.presenceState() as Record<string, unknown>) ?? {};
-      } catch {
-        rawState = {};
+    const intervalId = window.setInterval(() => {
+      const metrics = readRoomHistoryMetrics();
+      if (metrics.isPlaying) {
+        saveRoomHistoryProgress(false);
       }
+    }, 10000);
 
-      const list: RoomParticipant[] = Object.entries(rawState).map(([key, rawEntries]) => {
-        const entries = Array.isArray(rawEntries) ? rawEntries : [];
-        const latest = (entries.length > 0 ? entries[entries.length - 1] : {}) as {
-          name?: unknown;
-          isHost?: unknown;
-          joinedAt?: unknown;
-        } | null;
-        const name =
-          typeof latest?.name === 'string' && latest.name.trim()
-            ? latest.name.trim()
-            : 'Guest';
-        knownPresenceNamesRef.current.set(key, name);
-        return {
-          clientId: key,
-          name,
-          isHost: Boolean(latest?.isHost),
-          isSelf: key === clientIdRef.current,
-          joinedAt: typeof latest?.joinedAt === 'string' ? latest.joinedAt : '',
-        };
-      });
-
-      if (list.length === 0) {
-        list.push({
-          clientId: clientIdRef.current,
-          name: (latestUsernameRef.current ?? '').trim() || 'Guest',
-          isHost: latestIsHostRef.current,
-          isSelf: true,
-          joinedAt: '',
-        });
-      }
-
-      setParticipants(list);
-      hasInitialPresenceSyncRef.current = true;
+    const handleLeave = () => {
+      saveRoomHistoryProgress(false);
     };
 
-    channel
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'rooms',
-          filter: `id=eq.${currentRoom.id}`,
-        },
-        (payload) => {
-          if (!isEffectActive) return;
-          const updated = normalizeRoomRecord(payload?.new);
-          if (!updated) return;
-
-          const prevRoom = latestRoomRef.current;
-          const videoChanged =
-            updated.video_id !== prevRoom.video_id ||
-            (updated.source ?? 'youtube') !== (prevRoom.source ?? 'youtube') ||
-            (updated.video_url ?? null) !== (prevRoom.video_url ?? null);
-
-          // Always sync room settings, queue, and video metadata
-          setCurrentRoom(updated);
-
-          if (videoChanged) {
-            setRoomState({
-              isPlaying: updated.is_playing,
-              positionSeconds: updated.position_seconds,
-            });
-            setRoomTimeSeconds(updated.position_seconds);
-            return;
-          }
-
-          // Ignore the echo of playback updates triggered by our own player
-          const incomingMs = Date.parse(updated.updated_at);
-          if (!Number.isNaN(incomingMs)) {
-            for (const sentMs of recentSentTimestampsRef.current) {
-              if (Math.abs(incomingMs - sentMs) < 250) {
-                return;
-              }
-            }
-          }
-
-          setRoomState({
-            isPlaying: updated.is_playing,
-            positionSeconds: updated.position_seconds,
-          });
-          setRoomTimeSeconds(updated.position_seconds);
-          applyRemoteStateRef.current(updated.is_playing, updated.position_seconds);
-        }
-      )
-      .on('broadcast', { event: 'reaction' }, ({ payload }) => {
-        if (!isEffectActive) return;
-        const data = payload as { id?: string; emoji?: string; sender?: string } | null;
-        if (data?.id && data?.emoji) {
-          spawnFloatingReaction(data.id, data.emoji, data.sender);
-        }
-      })
-      .on('broadcast', { event: 'activity' }, ({ payload }) => {
-        if (!isEffectActive) return;
-        const data = payload as {
-          clientId?: string;
-          actor?: string;
-          action?: ActivityAction;
-          positionSeconds?: number;
-        } | null;
-        if (!data || data.clientId === clientIdRef.current) return;
-
-        const actor = (typeof data.actor === 'string' ? data.actor.trim() : '') || 'Someone';
-        if (data.action === 'pause') {
-          showToastRef.current(`${actor} paused`);
-        } else if (data.action === 'play') {
-          showToastRef.current(`${actor} played`);
-        } else if (data.action === 'seek') {
-          showToastRef.current(`${actor} jumped to ${formatSeconds(data.positionSeconds ?? 0)}`);
-        } else if (data.action === 'video') {
-          showToastRef.current(`${actor} changed the movie`);
-        }
-      })
-      .on('broadcast', { event: 'countdown' }, ({ payload }) => {
-        if (!isEffectActive) return;
-        const data = payload as {
-          clientId?: string;
-          positionSeconds?: number;
-        } | null;
-        if (!data || data.clientId === clientIdRef.current) return;
-        runSyncedCountdownRef.current(Math.max(0, data.positionSeconds ?? 0), false);
-      })
-      .on('presence', { event: 'sync' }, () => {
-        syncPresenceList();
-      })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        if (!isEffectActive || !hasInitialPresenceSyncRef.current || key === clientIdRef.current) {
-          return;
-        }
-        // Cancel any pending leave toast if this key just refreshed metadata (e.g. set name)
-        const pendingLeave = pendingLeaveTimersRef.current.get(key);
-        if (pendingLeave) {
-          window.clearTimeout(pendingLeave);
-          pendingLeaveTimersRef.current.delete(key);
-          syncPresenceList();
-          return;
-        }
-
-        const wasKnown = knownPresenceNamesRef.current.has(key);
-        const entry = (Array.isArray(newPresences) ? newPresences[0] : {}) as { name?: string };
-        const name = (typeof entry?.name === 'string' ? entry.name.trim() : '') || 'Guest';
-        knownPresenceNamesRef.current.set(key, name);
-
-        if (!wasKnown && name !== 'Guest') {
-          showToastRef.current(`${name} joined`);
-        }
-      })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        if (!isEffectActive || !hasInitialPresenceSyncRef.current || key === clientIdRef.current) {
-          return;
-        }
-        const entry = (Array.isArray(leftPresences) ? leftPresences[0] : {}) as { name?: string };
-        const leftName =
-          (typeof entry?.name === 'string' ? entry.name.trim() : '') ||
-          knownPresenceNamesRef.current.get(key) ||
-          'Guest';
-
-        const timerId = window.setTimeout(() => {
-          pendingLeaveTimersRef.current.delete(key);
-          if (!isEffectActive) return;
-          try {
-            const currentState = (channel.presenceState() as Record<string, unknown>) ?? {};
-            if (currentState[key]) return;
-          } catch {
-            return;
-          }
-          knownPresenceNamesRef.current.delete(key);
-          if (leftName !== 'Guest') {
-            showToastRef.current(`${leftName} left`);
-          }
-          syncPresenceList();
-        }, 450);
-
-        pendingLeaveTimersRef.current.set(key, timerId);
-      })
-      .subscribe(async (status) => {
-        if (!isEffectActive) return;
-        if (status === 'SUBSCRIBED') {
-          setSyncStatus('synced');
-          try {
-            await channel.track({
-              name: (latestUsernameRef.current ?? '').trim() || 'Guest',
-              isHost: latestIsHostRef.current,
-              joinedAt: new Date().toISOString(),
-            });
-          } catch {
-            // Ignore transient presence track errors
-          }
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setSyncStatus('reconnecting');
-        }
-      });
+    window.addEventListener('pagehide', handleLeave);
+    window.addEventListener('beforeunload', handleLeave);
 
     return () => {
-      isEffectActive = false;
-      roomChannelRef.current = null;
-      for (const timerId of countdownTimersRef.current) {
-        window.clearTimeout(timerId);
-      }
-      countdownTimersRef.current = [];
-      for (const timerId of pendingLeaveTimersRef.current.values()) {
-        window.clearTimeout(timerId);
-      }
-      pendingLeaveTimersRef.current.clear();
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
-        autoAdvanceTimerRef.current = null;
-      }
-      void channel.untrack().catch(() => {});
-      void supabase.removeChannel(channel);
+      window.clearInterval(intervalId);
+      window.removeEventListener('pagehide', handleLeave);
+      window.removeEventListener('beforeunload', handleLeave);
+      saveRoomHistoryProgress(false);
     };
-  }, [currentRoom.id]);
-
-  // Update Realtime presence whenever the viewer sets or changes their username
-  useEffect(() => {
-    const channel = roomChannelRef.current;
-    if (!channel || syncStatus !== 'synced') return;
-
-    void channel.track({
-      name: safeUsername.trim() || 'Guest',
-      isHost,
-      joinedAt: new Date().toISOString(),
-    });
-  }, [safeUsername, isHost, syncStatus]);
+  }, [currentRoom.id, currentRoom.video_id, isArchive, readRoomHistoryMetrics, saveRoomHistoryProgress]);
 
   const handleCopyInvite = async () => {
     const ok = await copyTextToClipboard(inviteLink);
@@ -1076,12 +1007,7 @@ export function RoomPage({
     const id = makeClientOrEventId('react');
     const sender = safeUsername.trim() || undefined;
     spawnFloatingReaction(id, emoji, sender);
-
-    void roomChannelRef.current?.send({
-      type: 'broadcast',
-      event: 'reaction',
-      payload: { id, emoji, sender },
-    });
+    sendReaction({ id, emoji, sender });
   };
 
   // Manual touch-friendly play/pause control
@@ -1115,15 +1041,7 @@ export function RoomPage({
     if (!isHost || !playerReady) return;
     const targetSeconds = Math.max(0, Math.floor(getCurrentPlayerTime()));
 
-    void roomChannelRef.current?.send({
-      type: 'broadcast',
-      event: 'countdown',
-      payload: {
-        clientId: clientIdRef.current,
-        positionSeconds: targetSeconds,
-      },
-    });
-
+    sendCountdown(targetSeconds);
     runSyncedCountdown(targetSeconds, true);
   };
 
@@ -1247,7 +1165,10 @@ export function RoomPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => {
+            saveRoomHistoryProgress(false);
+            onBack();
+          }}
           className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -1269,6 +1190,15 @@ export function RoomPage({
               <span>Room Settings</span>
             </button>
           )}
+
+          <BookmarkButton
+            source={isArchive ? 'archive' : 'youtube'}
+            id={isArchive ? currentRoom.video_id : video.youtubeId || currentRoom.video_id}
+            videoUrl={isArchive ? archiveUrl ?? currentRoom.video_url : null}
+            title={displayVideoTitle}
+            thumbnail={currentThumbnail}
+            variant="button"
+          />
 
           <button
             type="button"
@@ -1423,6 +1353,9 @@ export function RoomPage({
                     }
                   }}
                   onPause={(e) => {
+                    if (!e.currentTarget.ended) {
+                      saveRoomHistoryProgress(false);
+                    }
                     if (!isApplyingRemoteRef.current && !e.currentTarget.ended) {
                       void pushLocalState(false, e.currentTarget.currentTime, 'pause');
                     }
@@ -1436,7 +1369,10 @@ export function RoomPage({
                       );
                     }
                   }}
-                  onEnded={() => void advanceQueueOnEnd()}
+                  onEnded={() => {
+                    saveRoomHistoryProgress(true);
+                    void advanceQueueOnEnd();
+                  }}
                   onError={() => setArchiveError(true)}
                   className="aspect-video w-full bg-black"
                 />
@@ -1711,8 +1647,11 @@ export function RoomPage({
 
             {mobileTab === 'chat' && (
               <RoomChat
-                roomCode={currentRoom.code}
+                messages={chatMessages}
+                loading={chatLoading}
+                loadError={chatError}
                 username={safeUsername}
+                onSendMessage={sendChatMessage}
                 onRequestUsername={onRequestUsername}
                 inMobileTab
               />
@@ -1736,8 +1675,11 @@ export function RoomPage({
           <div className="hidden lg:flex lg:flex-col lg:gap-4">
             <RoomPeopleList participants={participants} compact />
             <RoomChat
-              roomCode={currentRoom.code}
+              messages={chatMessages}
+              loading={chatLoading}
+              loadError={chatError}
               username={safeUsername}
+              onSendMessage={sendChatMessage}
               onRequestUsername={onRequestUsername}
             />
           </div>

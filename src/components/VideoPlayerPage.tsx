@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ExternalLink,
@@ -10,8 +10,10 @@ import {
 import { LibraryVideo } from '../data/libraryVideos';
 import {
   fetchArchiveMovieDetails,
+  getArchiveThumbnail,
   isValidArchiveDownloadUrl,
 } from '../lib/archive';
+import { upsertWatchHistory } from '../lib/localLists';
 import {
   getArchiveWatchAloneLink,
   getWatchAloneLink,
@@ -19,9 +21,11 @@ import {
 } from '../lib/share';
 import {
   fetchYouTubeTitle,
+  getYouTubeThumbnail,
   loadYouTubeIframeAPI,
   YTPlayer,
 } from '../lib/youtube';
+import { BookmarkButton } from './BookmarkButton';
 
 export interface WatchableVideo {
   id: string;
@@ -32,6 +36,7 @@ export interface WatchableVideo {
   duration?: string;
   source?: 'youtube' | 'archive';
   videoUrl?: string;
+  initialPositionSeconds?: number;
 }
 
 interface VideoPlayerPageProps {
@@ -115,6 +120,116 @@ export function VideoPlayerPage({
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const htmlVideoRef = useRef<HTMLVideoElement | null>(null);
+  const initialSeekRef = useRef<number>(
+    typeof video.initialPositionSeconds === 'number' && video.initialPositionSeconds > 1
+      ? Math.floor(video.initialPositionSeconds)
+      : 0
+  );
+  useEffect(() => {
+    initialSeekRef.current =
+      typeof video.initialPositionSeconds === 'number' && video.initialPositionSeconds > 1
+        ? Math.floor(video.initialPositionSeconds)
+        : 0;
+  }, [video.youtubeId, video.initialPositionSeconds]);
+
+  const displayTitle = resolvedTitle ?? video.title;
+  const resolvedThumbnail =
+    video.thumbnail ||
+    (isArchive
+      ? getArchiveThumbnail(video.youtubeId)
+      : getYouTubeThumbnail(video.youtubeId));
+
+  // Keep latest metadata and last observed timestamps for leave/unmount saves
+  const latestMetaRef = useRef({
+    source: (isArchive ? 'archive' : 'youtube') as 'youtube' | 'archive',
+    id: video.youtubeId,
+    videoUrl: archiveUrl ?? video.videoUrl ?? null,
+    title: displayTitle,
+    thumbnail: resolvedThumbnail,
+  });
+  latestMetaRef.current = {
+    source: isArchive ? 'archive' : 'youtube',
+    id: video.youtubeId,
+    videoUrl: archiveUrl ?? video.videoUrl ?? null,
+    title: displayTitle,
+    thumbnail: resolvedThumbnail,
+  };
+
+  const lastPlaybackRef = useRef<{ position: number; duration: number }>({
+    position: 0,
+    duration: 0,
+  });
+
+  const readPlaybackMetrics = useCallback((): {
+    position: number;
+    duration: number;
+    isPlaying: boolean;
+  } => {
+    try {
+      if (latestMetaRef.current.source === 'archive') {
+        const el = htmlVideoRef.current;
+        if (el) {
+          const pos = Number.isFinite(el.currentTime) ? el.currentTime : 0;
+          const dur = Number.isFinite(el.duration) ? el.duration : 0;
+          if (pos > 0 || dur > 0) {
+            lastPlaybackRef.current = { position: pos, duration: dur };
+          }
+          return {
+            position: pos,
+            duration: dur,
+            isPlaying: !el.paused && !el.ended,
+          };
+        }
+      } else {
+        const player = playerRef.current;
+        if (player && typeof player.getCurrentTime === 'function') {
+          const pos = player.getCurrentTime();
+          const dur = typeof player.getDuration === 'function' ? player.getDuration() : 0;
+          const state = typeof player.getPlayerState === 'function' ? player.getPlayerState() : -1;
+          const safePos = typeof pos === 'number' && Number.isFinite(pos) ? pos : 0;
+          const safeDur = typeof dur === 'number' && Number.isFinite(dur) ? dur : 0;
+          if (safePos > 0 || safeDur > 0) {
+            lastPlaybackRef.current = { position: safePos, duration: safeDur };
+          }
+          return {
+            position: safePos,
+            duration: safeDur,
+            isPlaying: state === 1,
+          };
+        }
+      }
+    } catch {
+      // Fall back to last cached playback metrics
+    }
+    return {
+      position: lastPlaybackRef.current.position,
+      duration: lastPlaybackRef.current.duration,
+      isPlaying: false,
+    };
+  }, []);
+
+  const saveHistoryProgress = useCallback(
+    (markFinished = false) => {
+      const meta = latestMetaRef.current;
+      const metrics = readPlaybackMetrics();
+      const position = metrics.position > 0 ? metrics.position : lastPlaybackRef.current.position;
+      const duration = metrics.duration > 0 ? metrics.duration : lastPlaybackRef.current.duration;
+
+      if (position <= 0 && !markFinished) return;
+
+      upsertWatchHistory({
+        source: meta.source,
+        id: meta.id,
+        video_url: meta.videoUrl,
+        title: meta.title,
+        thumbnail: meta.thumbnail,
+        position,
+        duration,
+        markFinished,
+      });
+    },
+    [readPlaybackMetrics]
+  );
 
   // Resolve YouTube title via oEmbed when opened directly via ?watch=VIDEO_ID
   useEffect(() => {
@@ -179,6 +294,7 @@ export function VideoPlayerPage({
 
     let cancelled = false;
     setEmbedBlocked(false);
+    lastPlaybackRef.current = { position: 0, duration: 0 };
 
     loadYouTubeIframeAPI().then((YT) => {
       if (cancelled || !playerMountRef.current) return;
@@ -203,8 +319,19 @@ export function VideoPlayerPage({
         },
         events: {
           onReady: () => {
-            if (!cancelled) {
-              playerRef.current = player;
+            if (cancelled) return;
+            playerRef.current = player;
+            if (initialSeekRef.current > 1 && typeof player.seekTo === 'function') {
+              player.seekTo(initialSeekRef.current, true);
+              initialSeekRef.current = 0;
+            }
+          },
+          onStateChange: (event) => {
+            if (cancelled) return;
+            if (event.data === YT.PlayerState.PAUSED) {
+              saveHistoryProgress(false);
+            } else if (event.data === YT.PlayerState.ENDED) {
+              saveHistoryProgress(true);
             }
           },
           onError: (event) => {
@@ -218,6 +345,8 @@ export function VideoPlayerPage({
 
     return () => {
       cancelled = true;
+      // Persist final position before tearing down the player
+      saveHistoryProgress(false);
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
@@ -227,9 +356,31 @@ export function VideoPlayerPage({
         playerRef.current = null;
       }
     };
-  }, [isArchive, video.youtubeId]);
+  }, [isArchive, video.youtubeId, saveHistoryProgress]);
 
-  const displayTitle = resolvedTitle ?? video.title;
+  // Save playback position every 10 seconds while playing, and on tab/browser leave
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      const metrics = readPlaybackMetrics();
+      if (metrics.isPlaying) {
+        saveHistoryProgress(false);
+      }
+    }, 10000);
+
+    const handleLeave = () => {
+      saveHistoryProgress(false);
+    };
+
+    window.addEventListener('pagehide', handleLeave);
+    window.addEventListener('beforeunload', handleLeave);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('pagehide', handleLeave);
+      window.removeEventListener('beforeunload', handleLeave);
+      saveHistoryProgress(false);
+    };
+  }, [video.youtubeId, isArchive, readPlaybackMetrics, saveHistoryProgress]);
 
   const handleShareVideo = () => {
     onShare({
@@ -269,7 +420,10 @@ export function VideoPlayerPage({
     <section className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <button
         type="button"
-        onClick={onBack}
+        onClick={() => {
+          saveHistoryProgress(false);
+          onBack();
+        }}
         className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
@@ -313,6 +467,18 @@ export function VideoPlayerPage({
               controls
               playsInline
               autoPlay
+              onLoadedMetadata={(e) => {
+                if (initialSeekRef.current > 1) {
+                  e.currentTarget.currentTime = initialSeekRef.current;
+                  initialSeekRef.current = 0;
+                }
+              }}
+              onPause={(e) => {
+                if (!e.currentTarget.ended) {
+                  saveHistoryProgress(false);
+                }
+              }}
+              onEnded={() => saveHistoryProgress(true)}
               onError={() => setArchiveError(true)}
               className="aspect-video w-full bg-black"
             />
@@ -369,6 +535,15 @@ export function VideoPlayerPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <BookmarkButton
+            source={isArchive ? 'archive' : 'youtube'}
+            id={video.youtubeId}
+            videoUrl={archiveUrl ?? video.videoUrl}
+            title={displayTitle}
+            thumbnail={resolvedThumbnail}
+            variant="button"
+          />
+
           <button
             type="button"
             onClick={handleShareVideo}

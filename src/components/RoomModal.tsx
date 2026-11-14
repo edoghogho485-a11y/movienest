@@ -26,6 +26,7 @@ export interface RoomVideoOption {
   youtubeId?: string;
   source?: 'youtube' | 'archive';
   videoUrl?: string;
+  positionSeconds?: number;
 }
 
 interface RoomModalProps {
@@ -188,7 +189,7 @@ export function RoomModal({
       videoId: videoIdToSave,
       source: resolvedSource,
       videoUrl: resolvedVideoUrl,
-      positionSeconds: initialPositionSeconds,
+      positionSeconds: isSelectedInitial ? initialPositionSeconds : 0,
     });
 
     setSubmitting(false);

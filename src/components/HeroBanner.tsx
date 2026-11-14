@@ -20,6 +20,7 @@ import {
   YouTubeSearchResult,
 } from '../lib/youtube';
 import { RoomVideoOption } from './RoomModal';
+import { BookmarkButton } from './BookmarkButton';
 
 interface HeroSlide {
   videoId: string;
@@ -287,6 +288,14 @@ export function HeroBanner({
                     <Play className="h-4 w-4 fill-current" aria-hidden="true" />
                     <span>Watch Now</span>
                   </button>
+
+                  <BookmarkButton
+                    source="youtube"
+                    id={currentSlide.videoId}
+                    title={currentSlide.title}
+                    thumbnail={currentSlide.thumbnail}
+                    variant="button"
+                  />
 
                   <button
                     type="button"

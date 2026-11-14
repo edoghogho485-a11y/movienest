@@ -1,18 +1,15 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { AtSign, Send } from 'lucide-react';
-import {
-  CHAT_MESSAGE_MAX_LENGTH,
-  fetchRoomMessages,
-  RoomMessage,
-  sendRoomMessage,
-  supabase,
-} from '../lib/supabase';
+import { CHAT_MESSAGE_MAX_LENGTH, RoomMessage } from '../lib/supabase';
 
 const CHAT_COOLDOWN_MS = 1000;
 
 interface RoomChatProps {
-  roomCode: string;
+  messages: RoomMessage[];
+  loading: boolean;
+  loadError?: string;
   username: string;
+  onSendMessage: (body: string) => Promise<{ ok: boolean; error: string | null }>;
   onRequestUsername?: () => void;
   inMobileTab?: boolean;
 }
@@ -24,16 +21,17 @@ function formatMessageTime(isoDate: string): string {
 }
 
 export function RoomChat({
-  roomCode,
+  messages,
+  loading,
+  loadError = '',
   username,
+  onSendMessage,
   onRequestUsername,
   inMobileTab = false,
 }: RoomChatProps) {
-  const safeRoomCode = typeof roomCode === 'string' ? roomCode.trim() : '';
+  const safeMessages = Array.isArray(messages) ? messages : [];
   const safeUsername = typeof username === 'string' ? username.trim() : '';
 
-  const [messages, setMessages] = useState<RoomMessage[]>([]);
-  const [loading, setLoading] = useState(true);
   const [messageText, setMessageText] = useState('');
   const [sending, setSending] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -51,68 +49,17 @@ export function RoomChat({
     });
   };
 
-  // Load message history and subscribe to new messages for this room only
-  useEffect(() => {
-    if (!safeRoomCode) {
-      setLoading(false);
-      return;
-    }
-
-    let active = true;
-    setLoading(true);
-    setErrorMsg('');
-
-    fetchRoomMessages(safeRoomCode).then(({ messages: initial, error }) => {
-      if (!active) return;
-      setLoading(false);
-      if (error) {
-        setErrorMsg('Could not load chat messages.');
-        return;
-      }
-      setMessages(Array.isArray(initial) ? initial : []);
-      window.requestAnimationFrame(() => scrollToBottom(false));
-    });
-
-    const channel = supabase
-      .channel(`chat:${safeRoomCode}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `room_code=eq.${safeRoomCode}`,
-        },
-        (payload) => {
-          const incoming = payload?.new as Partial<RoomMessage> | undefined;
-          if (!incoming?.id || typeof incoming.body !== 'string') return;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === incoming.id)) {
-              return prev;
-            }
-            return [...prev, incoming as RoomMessage];
-          });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      active = false;
-      void supabase.removeChannel(channel);
-    };
-  }, [safeRoomCode]);
-
-  // Auto-scroll whenever a new message arrives
+  // Auto-scroll when message history loads or a new message arrives
   useEffect(() => {
     if (!loading) {
-      scrollToBottom(true);
+      window.requestAnimationFrame(() => scrollToBottom(safeMessages.length > 0));
     }
-  }, [messages.length, loading]);
+  }, [safeMessages.length, loading]);
 
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
     const trimmed = messageText.trim();
-    if (!trimmed || sending || !safeRoomCode) return;
+    if (!trimmed || sending) return;
 
     if (!safeUsername) {
       onRequestUsername?.();
@@ -132,25 +79,16 @@ export function RoomChat({
     setErrorMsg('');
     setMessageText('');
 
-    const { message, error } = await sendRoomMessage({
-      roomCode: safeRoomCode,
-      senderName: safeUsername,
-      body: clipped,
-    });
-
+    const { ok, error } = await onSendMessage(clipped);
     setSending(false);
 
-    if (error || !message) {
+    if (!ok) {
       setErrorMsg(error ?? 'Could not send your message. Please try again.');
       setMessageText(clipped);
-      return;
     }
-
-    // Add immediately (Realtime INSERT deduplicates by id)
-    setMessages((prev) =>
-      prev.some((m) => m.id === message.id) ? prev : [...prev, message]
-    );
   };
+
+  const displayedError = errorMsg || loadError;
 
   return (
     <aside
@@ -173,12 +111,12 @@ export function RoomChat({
       <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3.5">
         {loading ? (
           <p className="text-xs text-zinc-400">Loading messages...</p>
-        ) : messages.length === 0 ? (
+        ) : safeMessages.length === 0 ? (
           <p className="text-xs leading-relaxed text-zinc-400">
             No messages yet. Say hello to everyone in the room.
           </p>
         ) : (
-          messages.map((msg) => {
+          safeMessages.map((msg) => {
             const isSelf = Boolean(safeUsername && msg.sender_name === safeUsername);
             return (
               <div key={msg.id} className="space-y-0.5">
@@ -215,9 +153,9 @@ export function RoomChat({
           </button>
         ) : (
           <>
-            {errorMsg && (
+            {displayedError && (
               <p className="mb-2 text-xs text-[#F87171]" role="alert">
-                {errorMsg}
+                {displayedError}
               </p>
             )}
 

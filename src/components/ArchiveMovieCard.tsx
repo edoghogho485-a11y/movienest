@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Film, Share2, Users } from 'lucide-react';
 import { ArchiveMovieItem } from '../lib/archive';
+import { BookmarkButton } from './BookmarkButton';
 
 interface ArchiveMovieCardProps {
   movie: ArchiveMovieItem;
@@ -74,6 +75,13 @@ export function ArchiveMovieCard({
           <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>Create Room</span>
         </button>
+
+        <BookmarkButton
+          source="archive"
+          id={movie.identifier}
+          title={movie.title}
+          thumbnail={movie.thumbnail}
+        />
 
         <button
           type="button"

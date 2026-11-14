@@ -17,6 +17,7 @@ import {
   YouTubeSearchResult,
 } from '../lib/youtube';
 import { ArchiveMovieCard } from './ArchiveMovieCard';
+import { BookmarkButton } from './BookmarkButton';
 import { YouTubeMovieCard } from './YouTubeMovieCard';
 
 interface GenreRowsProps {
@@ -337,14 +338,23 @@ function SharedLibraryCard({
 
       <div className="mt-1 flex items-center justify-between gap-2">
         <p className="text-xs text-zinc-400 truncate">{item.category}</p>
-        <button
-          type="button"
-          onClick={() => onShare(item)}
-          aria-label={`Share ${item.title}`}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#14141a] text-zinc-300 transition-colors hover:border-white/30 hover:text-white active:bg-[#252530] cursor-pointer"
-        >
-          <Share2 className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <BookmarkButton
+            source="youtube"
+            id={item.video_id}
+            title={item.title}
+            thumbnail={getYouTubeThumbnail(item.video_id)}
+            className="!min-h-[32px] !h-8 !w-8"
+          />
+          <button
+            type="button"
+            onClick={() => onShare(item)}
+            aria-label={`Share ${item.title}`}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#14141a] text-zinc-300 transition-colors hover:border-white/30 hover:text-white active:bg-[#252530] cursor-pointer"
+          >
+            <Share2 className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </div>
   );
