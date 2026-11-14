@@ -25,6 +25,7 @@ import {
 import {
   fetchSharedLibrary,
   findRoomByCode,
+  isValidRoomCode,
   RoomRecord,
   SharedLibraryItem,
   supabase,
@@ -198,9 +199,17 @@ export default function App() {
   const [searchError, setSearchError] = useState(false);
 
   const loadRoomByCode = async (code: string) => {
+    const normalized = code.trim().toUpperCase();
+    if (!isValidRoomCode(normalized)) {
+      setRoomLoading(false);
+      setActiveRoom(null);
+      setRoomNotFoundCode(normalized || 'INVALID');
+      return;
+    }
+
     setRoomLoading(true);
     setRoomNotFoundCode(null);
-    const { room } = await findRoomByCode(code);
+    const { room } = await findRoomByCode(normalized);
     setRoomLoading(false);
 
     if (room) {
@@ -209,7 +218,7 @@ export default function App() {
       setSeeAllData(null);
     } else {
       setActiveRoom(null);
-      setRoomNotFoundCode(code);
+      setRoomNotFoundCode(normalized);
     }
   };
 
@@ -546,8 +555,8 @@ export default function App() {
   const handleWatchPartyInlineJoin = async (e: FormEvent) => {
     e.preventDefault();
     const cleanCode = extractRoomCode(partyJoinCode);
-    if (!cleanCode) {
-      setPartyJoinError('Please enter a room code (for example, NEST-7K4M2Q).');
+    if (!isValidRoomCode(cleanCode)) {
+      setPartyJoinError('Please enter a valid room code like NEST-7K4M2Q.');
       return;
     }
 
@@ -1003,12 +1012,12 @@ export default function App() {
         </main>
 
         <footer className="mt-10 border-t border-[#2a2a33]">
-          <div className="flex flex-col items-start justify-between gap-3 px-4 py-6 text-sm text-zinc-400 sm:flex-row sm:items-center sm:px-6 lg:px-8">
+          <div className="flex flex-col items-start justify-between gap-2 px-4 py-6 text-sm text-zinc-400 sm:flex-row sm:items-center sm:px-6 lg:px-8">
             <p className="font-display font-semibold text-white">
               Movie<span className="text-[#E50914]">Nest</span>
             </p>
             <p className="text-xs text-zinc-500">
-              Private screening rooms for friends · Built for phones and laptops
+              MovieNest doesn&apos;t host any videos. Videos stream from YouTube and the Internet Archive.
             </p>
           </div>
         </footer>

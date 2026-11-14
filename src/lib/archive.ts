@@ -49,6 +49,13 @@ export function getArchiveThumbnail(identifier: string): string {
   return `https://archive.org/services/img/${encodeURIComponent(identifier)}`;
 }
 
+// Only allow Archive streams served directly from https://archive.org/download/
+export function isValidArchiveDownloadUrl(
+  url: string | null | undefined
+): url is string {
+  return typeof url === 'string' && url.startsWith('https://archive.org/download/');
+}
+
 // Search Internet Archive advancedsearch.php with 72-hour Supabase search_cache caching
 export async function searchArchiveWithCache(
   archiveQuery: string,
@@ -177,8 +184,9 @@ export async function fetchArchiveMovieDetails(
       .map((segment) => encodeURIComponent(segment))
       .join('/');
 
+    const mp4Url = `https://archive.org/download/${encodeURIComponent(identifier)}/${encodedFilename}`;
     return {
-      mp4Url: `https://archive.org/download/${encodeURIComponent(identifier)}/${encodedFilename}`,
+      mp4Url: isValidArchiveDownloadUrl(mp4Url) ? mp4Url : null,
       title,
       year,
     };

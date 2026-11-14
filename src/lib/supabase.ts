@@ -7,6 +7,19 @@ export const SUPABASE_PUBLISHABLE_KEY =
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
+// Input validation rules
+export const ROOM_NAME_MAX_LENGTH = 60;
+export const DISPLAY_NAME_MAX_LENGTH = 30;
+export const CHAT_MESSAGE_MAX_LENGTH = 300;
+export const ROOM_CODE_PATTERN = /^NEST-[A-Z0-9]{3,6}$/;
+const ROOM_CREATE_COOLDOWN_MS = 10_000;
+
+let lastRoomCreatedAt = 0;
+
+export function isValidRoomCode(rawCode: string): boolean {
+  return ROOM_CODE_PATTERN.test(rawCode.trim().toUpperCase());
+}
+
 // Matches the "rooms" table schema in Supabase
 export interface RoomRecord {
   id: string;
@@ -47,9 +60,40 @@ export async function createRoomInSupabase(params: {
   videoUrl?: string | null;
   positionSeconds?: number;
 }): Promise<{ room: RoomRecord | null; error: string | null }> {
-  const cleanName = params.name.trim() || 'Private Screening Room';
-  const startSeconds = Math.max(0, Math.floor(params.positionSeconds ?? 0));
+  const cleanName = params.name.trim();
+  if (cleanName.length < 1 || cleanName.length > ROOM_NAME_MAX_LENGTH) {
+    return {
+      room: null,
+      error: `Room name must be between 1 and ${ROOM_NAME_MAX_LENGTH} characters.`,
+    };
+  }
+
+  // Enforce 10-second client-side cooldown between creating rooms
+  const now = Date.now();
+  if (now - lastRoomCreatedAt < ROOM_CREATE_COOLDOWN_MS) {
+    return {
+      room: null,
+      error: 'Slow down a little — please wait a few seconds before creating another room.',
+    };
+  }
+
   const videoSource = params.source ?? 'youtube';
+  if (
+    videoSource === 'archive' &&
+    (!params.videoUrl || !params.videoUrl.startsWith('https://archive.org/download/'))
+  ) {
+    return {
+      room: null,
+      error: 'This Archive movie cannot be played in a room. Please pick another movie.',
+    };
+  }
+
+  const cleanVideoId = params.videoId.trim();
+  if (!cleanVideoId) {
+    return { room: null, error: 'Please choose a video for your room.' };
+  }
+
+  const startSeconds = Math.max(0, Math.floor(params.positionSeconds ?? 0));
 
   // Check Supabase before inserting so we generate a fresh code if already taken
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -62,7 +106,10 @@ export async function createRoomInSupabase(params: {
       .maybeSingle();
 
     if (checkError) {
-      return { room: null, error: checkError.message };
+      return {
+        room: null,
+        error: 'Could not create your room right now. Please try again.',
+      };
     }
 
     if (existing) {
@@ -74,9 +121,9 @@ export async function createRoomInSupabase(params: {
       .insert({
         code,
         name: cleanName,
-        video_id: params.videoId,
+        video_id: cleanVideoId,
         source: videoSource,
-        video_url: params.videoUrl ?? null,
+        video_url: videoSource === 'archive' ? params.videoUrl ?? null : null,
         is_playing: false,
         position_seconds: startSeconds,
       })
@@ -84,37 +131,44 @@ export async function createRoomInSupabase(params: {
       .single();
 
     if (!error && data) {
+      lastRoomCreatedAt = Date.now();
       return { room: data as RoomRecord, error: null };
     }
 
     // Retry if another user took the same code between our check and insert
     if (error && error.code !== '23505') {
-      return { room: null, error: error.message };
+      return {
+        room: null,
+        error: 'Could not create your room right now. Please try again.',
+      };
     }
   }
 
-  return { room: null, error: 'Could not generate a unique room code. Please try again.' };
+  return {
+    room: null,
+    error: 'Could not create your room right now. Please try again.',
+  };
 }
 
 export async function findRoomByCode(
   rawCode: string
 ): Promise<{ room: RoomRecord | null; error: string | null }> {
   const cleanCode = rawCode.trim().toUpperCase();
-  if (!cleanCode) {
+  if (!ROOM_CODE_PATTERN.test(cleanCode)) {
     return { room: null, error: null };
   }
-
-  // Escape LIKE wildcards so case-insensitive lookup matches the exact code
-  const escapedCode = cleanCode.replace(/[\\%_]/g, '\\$&');
 
   const { data, error } = await supabase
     .from('rooms')
     .select('*')
-    .ilike('code', escapedCode)
+    .ilike('code', cleanCode)
     .maybeSingle();
 
   if (error) {
-    return { room: null, error: error.message };
+    return {
+      room: null,
+      error: 'Could not look up that room right now. Please try again.',
+    };
   }
 
   return { room: (data as RoomRecord | null) ?? null, error: null };
@@ -131,13 +185,14 @@ export async function updateRoomPlayback(params: {
     .from('rooms')
     .update({
       is_playing: params.isPlaying,
-      // Integer seconds work cleanly with both integer and numeric DB columns
       position_seconds: Math.max(0, Math.floor(params.positionSeconds)),
       updated_at: params.updatedAt,
     })
     .eq('id', params.roomId);
 
-  return { error: error ? error.message : null };
+  return {
+    error: error ? 'Could not sync playback right now.' : null,
+  };
 }
 
 // Matches the "messages" table schema in Supabase
@@ -153,36 +208,58 @@ export interface RoomMessage {
 export async function fetchRoomMessages(
   roomCode: string
 ): Promise<{ messages: RoomMessage[]; error: string | null }> {
+  const cleanRoomCode = roomCode.trim().toUpperCase();
+  if (!ROOM_CODE_PATTERN.test(cleanRoomCode)) {
+    return { messages: [], error: null };
+  }
+
   const { data, error } = await supabase
     .from('messages')
     .select('*')
-    .eq('room_code', roomCode)
+    .eq('room_code', cleanRoomCode)
     .order('created_at', { ascending: true });
 
   if (error) {
-    return { messages: [], error: error.message };
+    return {
+      messages: [],
+      error: 'Could not load chat messages right now.',
+    };
   }
 
   return { messages: (data as RoomMessage[]) ?? [], error: null };
 }
 
-// Save a new chat message (trims whitespace, enforces 300-char limit)
+// Save a new chat message (validates 1-30 char display name and 1-300 char body)
 export async function sendRoomMessage(params: {
   roomCode: string;
   senderName: string;
   body: string;
 }): Promise<{ message: RoomMessage | null; error: string | null }> {
-  const cleanBody = params.body.trim().slice(0, 300);
-  if (!cleanBody) {
-    return { message: null, error: null };
+  const cleanRoomCode = params.roomCode.trim().toUpperCase();
+  if (!ROOM_CODE_PATTERN.test(cleanRoomCode)) {
+    return { message: null, error: 'Invalid room code.' };
   }
 
-  const cleanSender = params.senderName.trim().slice(0, 40) || 'Guest';
+  const cleanSender = params.senderName.trim();
+  if (cleanSender.length < 1 || cleanSender.length > DISPLAY_NAME_MAX_LENGTH) {
+    return {
+      message: null,
+      error: `Display name must be 1 to ${DISPLAY_NAME_MAX_LENGTH} characters.`,
+    };
+  }
+
+  const cleanBody = params.body.trim();
+  if (cleanBody.length < 1 || cleanBody.length > CHAT_MESSAGE_MAX_LENGTH) {
+    return {
+      message: null,
+      error: `Message must be 1 to ${CHAT_MESSAGE_MAX_LENGTH} characters.`,
+    };
+  }
 
   const { data, error } = await supabase
     .from('messages')
     .insert({
-      room_code: params.roomCode,
+      room_code: cleanRoomCode,
       sender_name: cleanSender,
       body: cleanBody,
     })
@@ -190,7 +267,10 @@ export async function sendRoomMessage(params: {
     .single();
 
   if (error) {
-    return { message: null, error: error.message };
+    return {
+      message: null,
+      error: 'Could not send your message. Please try again.',
+    };
   }
 
   return { message: data as RoomMessage, error: null };
@@ -228,7 +308,10 @@ export async function fetchSharedLibrary(): Promise<{
     .order('created_at', { ascending: false });
 
   if (error) {
-    return { items: [], error: error.message };
+    return {
+      items: [],
+      error: 'Could not load the shared library right now.',
+    };
   }
 
   return { items: (data as SharedLibraryItem[]) ?? [], error: null };
@@ -244,15 +327,28 @@ export async function saveToSharedLibrary(params: {
   duplicate: boolean;
   error: string | null;
 }> {
+  const cleanVideoId = params.videoId.trim();
+  if (!/^[a-zA-Z0-9_-]{11}$/.test(cleanVideoId)) {
+    return {
+      item: null,
+      duplicate: false,
+      error: 'Please choose a valid YouTube video.',
+    };
+  }
+
   // Check first so duplicates are handled cleanly even without a unique index
   const { data: existing, error: lookupError } = await supabase
     .from('library')
     .select('*')
-    .eq('video_id', params.videoId)
+    .eq('video_id', cleanVideoId)
     .maybeSingle();
 
   if (lookupError) {
-    return { item: null, duplicate: false, error: lookupError.message };
+    return {
+      item: null,
+      duplicate: false,
+      error: 'Could not save this video right now. Please try again.',
+    };
   }
 
   if (existing) {
@@ -263,12 +359,12 @@ export async function saveToSharedLibrary(params: {
     };
   }
 
-  const cleanTitle = params.title.trim() || `YouTube Video (${params.videoId})`;
+  const cleanTitle = params.title.trim().slice(0, 120) || `YouTube Video (${cleanVideoId})`;
 
   const { data, error } = await supabase
     .from('library')
     .insert({
-      video_id: params.videoId,
+      video_id: cleanVideoId,
       title: cleanTitle,
       category: params.category,
     })
@@ -276,11 +372,14 @@ export async function saveToSharedLibrary(params: {
     .single();
 
   if (error) {
-    // Handle race-condition unique constraint violation gracefully as duplicate
     if (error.code === '23505') {
       return { item: null, duplicate: true, error: null };
     }
-    return { item: null, duplicate: false, error: error.message };
+    return {
+      item: null,
+      duplicate: false,
+      error: 'Could not save this video right now. Please try again.',
+    };
   }
 
   return {
@@ -297,7 +396,7 @@ export interface SearchCacheRecord<T = unknown> {
   fetched_at: string;
 }
 
-// Fetch cached YouTube search results for a normalized query
+// Fetch cached search results for a normalized query
 export async function getSearchCache<T = unknown>(
   normalizedQuery: string
 ): Promise<SearchCacheRecord<T> | null> {
@@ -314,7 +413,7 @@ export async function getSearchCache<T = unknown>(
   return data as SearchCacheRecord<T>;
 }
 
-// Save or refresh cached YouTube search results in Supabase
+// Save or refresh cached search results in Supabase
 export async function upsertSearchCache<T = unknown>(
   normalizedQuery: string,
   results: T[]

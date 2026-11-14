@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Send } from 'lucide-react';
 import {
+  CHAT_MESSAGE_MAX_LENGTH,
+  DISPLAY_NAME_MAX_LENGTH,
   fetchRoomMessages,
   RoomMessage,
   sendRoomMessage,
@@ -8,7 +10,7 @@ import {
 } from '../lib/supabase';
 
 const DISPLAY_NAME_STORAGE_KEY = 'movienest_display_name';
-const MAX_MESSAGE_LENGTH = 300;
+const CHAT_COOLDOWN_MS = 1000;
 
 interface RoomChatProps {
   roomCode: string;
@@ -21,10 +23,15 @@ function formatMessageTime(isoDate: string): string {
 }
 
 export function RoomChat({ roomCode }: RoomChatProps) {
-  // Remember the viewer's display name on this device
+  // Remember the viewer's display name on this device (capped at 30 chars)
   const [displayName, setDisplayName] = useState<string>(() => {
     try {
-      return localStorage.getItem(DISPLAY_NAME_STORAGE_KEY)?.trim() ?? '';
+      return (
+        localStorage
+          .getItem(DISPLAY_NAME_STORAGE_KEY)
+          ?.trim()
+          .slice(0, DISPLAY_NAME_MAX_LENGTH) ?? ''
+      );
     } catch {
       return '';
     }
@@ -38,6 +45,7 @@ export function RoomChat({ roomCode }: RoomChatProps) {
   const [errorMsg, setErrorMsg] = useState('');
 
   const listRef = useRef<HTMLDivElement>(null);
+  const lastMessageSentAtRef = useRef<number>(0);
 
   // Scroll smoothly to the newest message at the bottom
   const scrollToBottom = (smooth = true) => {
@@ -105,7 +113,7 @@ export function RoomChat({ roomCode }: RoomChatProps) {
 
   const handleSaveName = (e: FormEvent) => {
     e.preventDefault();
-    const cleaned = nameInput.trim().slice(0, 40);
+    const cleaned = nameInput.trim().slice(0, DISPLAY_NAME_MAX_LENGTH);
     if (!cleaned) return;
     try {
       localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, cleaned);
@@ -121,7 +129,15 @@ export function RoomChat({ roomCode }: RoomChatProps) {
     const trimmed = messageText.trim();
     if (!trimmed || !displayName || sending) return;
 
-    const clipped = trimmed.slice(0, MAX_MESSAGE_LENGTH);
+    // Limit each person to one chat message per second
+    const now = Date.now();
+    if (now - lastMessageSentAtRef.current < CHAT_COOLDOWN_MS) {
+      setErrorMsg('Slow down a little');
+      return;
+    }
+
+    const clipped = trimmed.slice(0, CHAT_MESSAGE_MAX_LENGTH);
+    lastMessageSentAtRef.current = now;
     setSending(true);
     setErrorMsg('');
     setMessageText('');
@@ -135,7 +151,7 @@ export function RoomChat({ roomCode }: RoomChatProps) {
     setSending(false);
 
     if (error || !message) {
-      setErrorMsg('Message failed to send. Please try again.');
+      setErrorMsg(error ?? 'Could not send your message. Please try again.');
       setMessageText(clipped);
       return;
     }
@@ -175,8 +191,8 @@ export function RoomChat({ roomCode }: RoomChatProps) {
             <input
               type="text"
               value={nameInput}
-              onChange={(e) => setNameInput(e.target.value)}
-              maxLength={40}
+              onChange={(e) => setNameInput(e.target.value.slice(0, DISPLAY_NAME_MAX_LENGTH))}
+              maxLength={DISPLAY_NAME_MAX_LENGTH}
               placeholder="Your name..."
               aria-label="Display name"
               className="w-full min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] px-3.5 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
@@ -239,8 +255,8 @@ export function RoomChat({ roomCode }: RoomChatProps) {
               <input
                 type="text"
                 value={messageText}
-                onChange={(e) => setMessageText(e.target.value.slice(0, MAX_MESSAGE_LENGTH))}
-                maxLength={MAX_MESSAGE_LENGTH}
+                onChange={(e) => setMessageText(e.target.value.slice(0, CHAT_MESSAGE_MAX_LENGTH))}
+                maxLength={CHAT_MESSAGE_MAX_LENGTH}
                 placeholder="Write a message..."
                 aria-label="Chat message"
                 className="min-w-0 flex-1 min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
@@ -258,7 +274,7 @@ export function RoomChat({ roomCode }: RoomChatProps) {
 
             {messageText.length >= 240 && (
               <p className="mt-1.5 text-right font-mono text-[11px] text-zinc-400 tabular-nums">
-                {messageText.length}/{MAX_MESSAGE_LENGTH}
+                {messageText.length}/{CHAT_MESSAGE_MAX_LENGTH}
               </p>
             )}
           </div>

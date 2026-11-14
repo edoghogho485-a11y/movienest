@@ -64,24 +64,35 @@ declare global {
   }
 }
 
+// Decode common HTML entities returned by YouTube snippets without invoking an HTML parser
 function decodeHtmlEntities(text: string): string {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(text, 'text/html');
-  return doc.documentElement.textContent || text;
+  const entities: Record<string, string> = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&#x27;': "'",
+    '&apos;': "'",
+  };
+  return text.replace(
+    /&(?:amp|lt|gt|quot|#39|#x27|apos);/gi,
+    (match) => entities[match.toLowerCase()] ?? match
+  );
 }
 
-// Extract an 11-character YouTube video ID from watch, youtu.be, shorts, or embed URLs
+// Extract an 11-character YouTube video ID from youtube.com, m.youtube.com, or youtu.be URLs only
 export function extractYouTubeId(rawInput: string): string | null {
   const input = rawInput.trim();
   if (!input) return null;
 
-  if (/^[a-zA-Z0-9_-]{11}$/.test(input)) {
-    return input;
-  }
-
   try {
     const normalized = /^https?:\/\//i.test(input) ? input : `https://${input}`;
     const url = new URL(normalized);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      return null;
+    }
+
     const host = url.hostname.replace(/^www\./i, '').toLowerCase();
 
     if (host === 'youtu.be') {
@@ -89,12 +100,7 @@ export function extractYouTubeId(rawInput: string): string | null {
       return id && /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
     }
 
-    if (
-      host === 'youtube.com' ||
-      host === 'm.youtube.com' ||
-      host === 'music.youtube.com' ||
-      host === 'youtube-nocookie.com'
-    ) {
+    if (host === 'youtube.com' || host === 'm.youtube.com') {
       const vParam = url.searchParams.get('v');
       if (vParam && /^[a-zA-Z0-9_-]{11}$/.test(vParam)) {
         return vParam;
@@ -110,10 +116,7 @@ export function extractYouTubeId(rawInput: string): string | null {
       }
     }
   } catch {
-    const match = input.match(
-      /(?:v=|youtu\.be\/|\/shorts\/|\/embed\/)([a-zA-Z0-9_-]{11})/
-    );
-    return match ? match[1] : null;
+    return null;
   }
 
   return null;

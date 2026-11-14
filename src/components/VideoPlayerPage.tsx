@@ -8,7 +8,10 @@ import {
   Users,
 } from 'lucide-react';
 import { LibraryVideo } from '../data/libraryVideos';
-import { fetchArchiveMovieDetails } from '../lib/archive';
+import {
+  fetchArchiveMovieDetails,
+  isValidArchiveDownloadUrl,
+} from '../lib/archive';
 import {
   getArchiveWatchAloneLink,
   getWatchAloneLink,
@@ -137,9 +140,14 @@ export function VideoPlayerPage({
     }
 
     if (video.videoUrl) {
-      setArchiveUrl(video.videoUrl);
+      if (isValidArchiveDownloadUrl(video.videoUrl)) {
+        setArchiveUrl(video.videoUrl);
+        setArchiveError(false);
+      } else {
+        setArchiveUrl(null);
+        setArchiveError(true);
+      }
       setArchiveLoading(false);
-      setArchiveError(false);
       return;
     }
 
@@ -153,7 +161,7 @@ export function VideoPlayerPage({
       if (details.title) {
         setResolvedTitle(details.title);
       }
-      if (!details.mp4Url) {
+      if (!isValidArchiveDownloadUrl(details.mp4Url)) {
         setArchiveError(true);
         return;
       }
@@ -175,7 +183,7 @@ export function VideoPlayerPage({
     loadYouTubeIframeAPI().then((YT) => {
       if (cancelled || !playerMountRef.current) return;
 
-      playerMountRef.current.innerHTML = '';
+      playerMountRef.current.replaceChildren();
       const playerDiv = document.createElement('div');
       playerDiv.className = 'h-full w-full';
       playerMountRef.current.appendChild(playerDiv);

@@ -15,7 +15,10 @@ import {
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
-import { fetchArchiveMovieDetails } from '../lib/archive';
+import {
+  fetchArchiveMovieDetails,
+  isValidArchiveDownloadUrl,
+} from '../lib/archive';
 import { copyTextToClipboard, ShareTarget } from '../lib/share';
 import {
   findRoomByCode,
@@ -130,7 +133,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
 
   // Floating reactions state (Broadcast over Supabase Realtime, max 1/sec per viewer)
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
-  const [reactionCooldown, setReactionCooldown] = useState(false);
+  const [reactionNote, setReactionNote] = useState<string | null>(null);
 
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -187,8 +190,14 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     if (isArchive) {
       let cancelled = false;
       setArchiveError(false);
+
       if (room.video_url) {
-        setArchiveUrl(room.video_url);
+        if (isValidArchiveDownloadUrl(room.video_url)) {
+          setArchiveUrl(room.video_url);
+        } else {
+          setArchiveUrl(null);
+          setArchiveError(true);
+        }
         setArchiveLoading(false);
       } else {
         setArchiveLoading(true);
@@ -199,7 +208,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
         if (details.title) setResolvedTitle(details.title);
         if (!room.video_url) {
           setArchiveLoading(false);
-          if (details.mp4Url) {
+          if (isValidArchiveDownloadUrl(details.mp4Url)) {
             setArchiveUrl(details.mp4Url);
           } else {
             setArchiveError(true);
@@ -321,7 +330,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     loadYouTubeIframeAPI().then((YT) => {
       if (cancelled || !playerMountRef.current) return;
 
-      playerMountRef.current.innerHTML = '';
+      playerMountRef.current.replaceChildren();
       const playerDiv = document.createElement('div');
       playerDiv.className = 'h-full w-full';
       playerMountRef.current.appendChild(playerDiv);
@@ -515,11 +524,14 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
   // Broadcast emoji reaction (limited to 1 reaction per second per viewer)
   const handleSendReaction = (emoji: string) => {
     const now = Date.now();
-    if (now - lastReactionAtRef.current < REACTION_COOLDOWN_MS) return;
+    if (now - lastReactionAtRef.current < REACTION_COOLDOWN_MS) {
+      setReactionNote('Slow down a little');
+      window.setTimeout(() => setReactionNote(null), 1500);
+      return;
+    }
 
     lastReactionAtRef.current = now;
-    setReactionCooldown(true);
-    window.setTimeout(() => setReactionCooldown(false), REACTION_COOLDOWN_MS);
+    setReactionNote(null);
 
     const id =
       typeof crypto !== 'undefined' && crypto.randomUUID
@@ -835,23 +847,29 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
             )}
 
             {/* Room reactions bar (1 reaction per second per viewer) */}
-            <div
-              role="group"
-              aria-label="Send a reaction to the room"
-              className="flex flex-wrap items-center gap-1.5"
-            >
-              {REACTION_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  disabled={reactionCooldown}
-                  onClick={() => handleSendReaction(emoji)}
-                  aria-label={`React with ${emoji}`}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#1b1b24] text-lg transition-colors hover:border-[#E50914] active:bg-[#2a2a38] disabled:opacity-50 cursor-pointer"
-                >
-                  {emoji}
-                </button>
-              ))}
+            <div className="flex flex-col items-start gap-1 sm:items-end">
+              <div
+                role="group"
+                aria-label="Send a reaction to the room"
+                className="flex flex-wrap items-center gap-1.5"
+              >
+                {REACTION_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => handleSendReaction(emoji)}
+                    aria-label={`React with ${emoji}`}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#1b1b24] text-lg transition-colors hover:border-[#E50914] active:bg-[#2a2a38] cursor-pointer"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+              {reactionNote && (
+                <p className="text-[11px] text-zinc-400" role="status">
+                  {reactionNote}
+                </p>
+              )}
             </div>
           </div>
         </div>

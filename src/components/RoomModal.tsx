@@ -3,11 +3,13 @@ import { ArrowRight, Check, Copy, Play, Share2, Users, X } from 'lucide-react';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
 import { copyTextToClipboard, ShareTarget } from '../lib/share';
-import { fetchArchiveMovieDetails } from '../lib/archive';
+import { fetchArchiveMovieDetails, isValidArchiveDownloadUrl } from '../lib/archive';
 import {
   createRoomInSupabase,
   findRoomByCode,
   getInviteLink,
+  isValidRoomCode,
+  ROOM_NAME_MAX_LENGTH,
   RoomRecord,
   SharedLibraryItem,
 } from '../lib/supabase';
@@ -138,6 +140,13 @@ export function RoomModal({
     setErrorMsg('');
     setSubmitting(true);
 
+    const trimmedRoomName = roomName.trim();
+    if (!trimmedRoomName || trimmedRoomName.length > ROOM_NAME_MAX_LENGTH) {
+      setSubmitting(false);
+      setErrorMsg(`Please enter a room name between 1 and ${ROOM_NAME_MAX_LENGTH} characters.`);
+      return;
+    }
+
     const isSelectedInitial =
       initialVideo &&
       (initialVideo.youtubeId === videoIdToSave || initialVideo.id === videoIdToSave);
@@ -149,18 +158,24 @@ export function RoomModal({
     let resolvedTitle = explicitTitle ?? resolveVideoTitle(videoIdToSave);
 
     // For Internet Archive movies, resolve the first .mp4 URL before saving the room
-    if (resolvedSource === 'archive' && !resolvedVideoUrl) {
-      const details = await fetchArchiveMovieDetails(videoIdToSave);
-      if (!details.mp4Url) {
+    if (resolvedSource === 'archive') {
+      if (!resolvedVideoUrl) {
+        const details = await fetchArchiveMovieDetails(videoIdToSave);
+        if (!details.mp4Url || !isValidArchiveDownloadUrl(details.mp4Url)) {
+          setSubmitting(false);
+          setErrorMsg(
+            "This Archive movie doesn't have a playable MP4 file. Please pick another movie."
+          );
+          return;
+        }
+        resolvedVideoUrl = details.mp4Url;
+        if (details.title && !explicitTitle) {
+          resolvedTitle = details.title;
+        }
+      } else if (!isValidArchiveDownloadUrl(resolvedVideoUrl)) {
         setSubmitting(false);
-        setErrorMsg(
-          "This Archive movie doesn't have a playable MP4 file. Please pick another movie."
-        );
+        setErrorMsg('This Archive video link is not supported.');
         return;
-      }
-      resolvedVideoUrl = details.mp4Url;
-      if (details.title && !explicitTitle) {
-        resolvedTitle = details.title;
       }
     }
 
@@ -197,8 +212,8 @@ export function RoomModal({
   const handleJoinSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const cleanCode = extractRoomCode(joinCode);
-    if (!cleanCode) {
-      setErrorMsg('Please enter a room code (for example, NEST-482).');
+    if (!isValidRoomCode(cleanCode)) {
+      setErrorMsg('Please enter a valid room code like NEST-7K4M2Q.');
       return;
     }
 
@@ -363,6 +378,7 @@ export function RoomModal({
                 <input
                   id="room-name-input"
                   type="text"
+                  maxLength={ROOM_NAME_MAX_LENGTH}
                   value={roomName}
                   onChange={(e) => setRoomName(e.target.value)}
                   placeholder="Friday Movie Night"
