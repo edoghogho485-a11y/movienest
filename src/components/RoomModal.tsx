@@ -40,6 +40,8 @@ interface RoomModalProps {
   onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
 
+const EMPTY_LIBRARY: SharedLibraryItem[] = [];
+
 function extractRoomCode(input: string): string {
   const trimmed = input.trim();
   if (trimmed.includes('room=')) {
@@ -67,9 +69,10 @@ export function RoomModal({
   onShareRoom,
   onSavedToLibrary,
 }: RoomModalProps) {
+  const safeLibrary = Array.isArray(sharedLibrary) ? sharedLibrary : EMPTY_LIBRARY;
   const [roomName, setRoomName] = useState('Friday Movie Night');
   const [selectedVideoId, setSelectedVideoId] = useState(
-    initialVideo?.youtubeId ?? initialVideo?.id ?? LIBRARY_VIDEOS[0].youtubeId
+    initialVideo?.youtubeId ?? initialVideo?.id ?? LIBRARY_VIDEOS[0]?.youtubeId ?? ''
   );
   const [joinCode, setJoinCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -85,11 +88,11 @@ export function RoomModal({
         setSelectedVideoId(initialVideo.youtubeId ?? initialVideo.id);
       } else {
         setSelectedVideoId(
-          sharedLibrary[0]?.video_id ?? LIBRARY_VIDEOS[0].youtubeId
+          safeLibrary[0]?.video_id ?? LIBRARY_VIDEOS[0]?.youtubeId ?? ''
         );
       }
     }
-  }, [mode, initialVideo, sharedLibrary]);
+  }, [mode, initialVideo, safeLibrary]);
 
   useEffect(() => {
     if (!mode) {
@@ -119,7 +122,7 @@ export function RoomModal({
     ) {
       return initialVideo.title;
     }
-    const fromShared = sharedLibrary.find((i) => i.video_id === videoIdToLookup);
+    const fromShared = safeLibrary.find((i) => i.video_id === videoIdToLookup);
     if (fromShared) return fromShared.title;
     const fromLib = LIBRARY_VIDEOS.find(
       (v) => v.youtubeId === videoIdToLookup || v.id === videoIdToLookup
@@ -190,7 +193,8 @@ export function RoomModal({
 
     setSubmitting(false);
 
-    if (error || !room) {
+    // Only advance when the Supabase insert succeeds and returns a valid room record
+    if (error || !room || !room.id || !room.code) {
       setErrorMsg(error ?? 'Could not save room. Please try again.');
       return;
     }
@@ -266,7 +270,7 @@ export function RoomModal({
 
   // Check if selectedVideoId is already represented in one of the dropdown lists
   const isKnownDropdownOption =
-    sharedLibrary.some((item) => item.video_id === selectedVideoId) ||
+    safeLibrary.some((item) => item.video_id === selectedVideoId) ||
     LIBRARY_VIDEOS.some(
       (v) => v.id === selectedVideoId || v.youtubeId === selectedVideoId
     ) ||
@@ -363,7 +367,11 @@ export function RoomModal({
 
               <button
                 type="button"
-                onClick={() => onOpenRoom(createdRoom)}
+                onClick={() => {
+                  if (createdRoom?.id && createdRoom?.code) {
+                    onOpenRoom(createdRoom);
+                  }
+                }}
                 className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
               >
                 <span>Open Room</span>
@@ -418,9 +426,9 @@ export function RoomModal({
                       </option>
                     </optgroup>
                   )}
-                  {sharedLibrary.length > 0 && (
+                  {safeLibrary.length > 0 && (
                     <optgroup label="Shared Library">
-                      {sharedLibrary.map((item) => (
+                      {safeLibrary.map((item) => (
                         <option key={item.id} value={item.video_id}>
                           {item.title} ({item.category})
                         </option>

@@ -22,6 +22,8 @@ export function RoomQueuePanel({
   onRemoveItem,
   inMobileTab = false,
 }: RoomQueuePanelProps) {
+  const safeQueue = Array.isArray(queue) ? queue : [];
+
   return (
     <section
       aria-label="Up Next queue"
@@ -36,7 +38,7 @@ export function RoomQueuePanel({
             Up Next
           </h2>
           <span className="font-mono text-xs text-zinc-400 tabular-nums">
-            {queue.length}/{QUEUE_MAX_ITEMS}
+            {safeQueue.length}/{QUEUE_MAX_ITEMS}
           </span>
         </div>
 
@@ -52,7 +54,7 @@ export function RoomQueuePanel({
         )}
       </div>
 
-      {queue.length === 0 ? (
+      {safeQueue.length === 0 ? (
         <div
           className={`flex flex-col items-center justify-center gap-2 px-4 py-6 text-center ${
             inMobileTab ? 'flex-1' : ''
@@ -69,7 +71,7 @@ export function RoomQueuePanel({
             inMobileTab ? 'flex-1' : 'max-h-72'
           }`}
         >
-          {queue.map((item, index) => {
+          {safeQueue.map((item, index) => {
             const isBusy = busyItemId === item.id;
             return (
               <li

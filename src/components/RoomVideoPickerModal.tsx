@@ -70,6 +70,8 @@ export function RoomVideoPickerModal({
   onPlayNow,
   onAddToQueue,
 }: RoomVideoPickerModalProps) {
+  const safeQueue = Array.isArray(queue) ? queue : [];
+  const safeLibrary = Array.isArray(sharedLibrary) ? sharedLibrary : [];
   const [searchInput, setSearchInput] = useState('');
   const [activeSearchQuery, setActiveSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -153,7 +155,7 @@ export function RoomVideoPickerModal({
 
   if (!open) return null;
 
-  const isQueueFull = queue.length >= QUEUE_MAX_ITEMS;
+  const isQueueFull = safeQueue.length >= QUEUE_MAX_ITEMS;
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
@@ -217,7 +219,7 @@ export function RoomVideoPickerModal({
   };
 
   const renderCard = (movie: PickerMovieSelection, subtitle: string) => {
-    const inQueue = queue.some(
+    const inQueue = safeQueue.some(
       (q) => q.videoId === movie.videoId && q.source === movie.source
     );
     const playBusy = busyKey === `play-${movie.source}-${movie.videoId}`;
@@ -312,7 +314,7 @@ export function RoomVideoPickerModal({
               Change Video or Add to Queue
             </h2>
             <p className="text-xs text-zinc-400">
-              Pick from YouTube, Internet Archive, or paste any YouTube link ({queue.length}/
+              Pick from YouTube, Internet Archive, or paste any YouTube link ({safeQueue.length}/
               {QUEUE_MAX_ITEMS} queued)
             </p>
           </div>
@@ -484,11 +486,11 @@ export function RoomVideoPickerModal({
               </div>
             )
           ) : currentTab.kind === 'library' ? (
-            sharedLibrary.length === 0 ? (
+            safeLibrary.length === 0 ? (
               <p className="text-sm text-zinc-400">No saved videos in your shared library yet.</p>
             ) : (
               <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-                {sharedLibrary.map((item) =>
+                {safeLibrary.map((item) =>
                   renderCard(
                     {
                       videoId: item.video_id,

@@ -29,6 +29,9 @@ export function RoomChat({
   onRequestUsername,
   inMobileTab = false,
 }: RoomChatProps) {
+  const safeRoomCode = typeof roomCode === 'string' ? roomCode.trim() : '';
+  const safeUsername = typeof username === 'string' ? username.trim() : '';
+
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [messageText, setMessageText] = useState('');
@@ -50,38 +53,44 @@ export function RoomChat({
 
   // Load message history and subscribe to new messages for this room only
   useEffect(() => {
+    if (!safeRoomCode) {
+      setLoading(false);
+      return;
+    }
+
     let active = true;
     setLoading(true);
     setErrorMsg('');
 
-    fetchRoomMessages(roomCode).then(({ messages: initial, error }) => {
+    fetchRoomMessages(safeRoomCode).then(({ messages: initial, error }) => {
       if (!active) return;
       setLoading(false);
       if (error) {
         setErrorMsg('Could not load chat messages.');
         return;
       }
-      setMessages(initial);
+      setMessages(Array.isArray(initial) ? initial : []);
       window.requestAnimationFrame(() => scrollToBottom(false));
     });
 
     const channel = supabase
-      .channel(`chat:${roomCode}`)
+      .channel(`chat:${safeRoomCode}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `room_code=eq.${roomCode}`,
+          filter: `room_code=eq.${safeRoomCode}`,
         },
         (payload) => {
-          const incoming = payload.new as RoomMessage;
+          const incoming = payload?.new as Partial<RoomMessage> | undefined;
+          if (!incoming?.id || typeof incoming.body !== 'string') return;
           setMessages((prev) => {
             if (prev.some((m) => m.id === incoming.id)) {
               return prev;
             }
-            return [...prev, incoming];
+            return [...prev, incoming as RoomMessage];
           });
         }
       )
@@ -91,7 +100,7 @@ export function RoomChat({
       active = false;
       void supabase.removeChannel(channel);
     };
-  }, [roomCode]);
+  }, [safeRoomCode]);
 
   // Auto-scroll whenever a new message arrives
   useEffect(() => {
@@ -103,9 +112,9 @@ export function RoomChat({
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
     const trimmed = messageText.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || sending || !safeRoomCode) return;
 
-    if (!username) {
+    if (!safeUsername) {
       onRequestUsername?.();
       return;
     }
@@ -124,8 +133,8 @@ export function RoomChat({
     setMessageText('');
 
     const { message, error } = await sendRoomMessage({
-      roomCode,
-      senderName: username,
+      roomCode: safeRoomCode,
+      senderName: safeUsername,
       body: clipped,
     });
 
@@ -154,9 +163,9 @@ export function RoomChat({
         <h2 className="font-display text-sm font-semibold text-white">
           Room Chat
         </h2>
-        {username && (
+        {safeUsername && (
           <span className="truncate text-xs text-zinc-400">
-            Chatting as <span className="font-medium text-[#E50914]">@{username}</span>
+            Chatting as <span className="font-medium text-[#E50914]">@{safeUsername}</span>
           </span>
         )}
       </div>
@@ -170,7 +179,7 @@ export function RoomChat({
           </p>
         ) : (
           messages.map((msg) => {
-            const isSelf = Boolean(username && msg.sender_name === username);
+            const isSelf = Boolean(safeUsername && msg.sender_name === safeUsername);
             return (
               <div key={msg.id} className="space-y-0.5">
                 <div className="flex items-baseline justify-between gap-2">
@@ -195,7 +204,7 @@ export function RoomChat({
       </div>
 
       <div className="border-t border-white/10 bg-[#181820] p-3">
-        {!username ? (
+        {!safeUsername ? (
           <button
             type="button"
             onClick={onRequestUsername}

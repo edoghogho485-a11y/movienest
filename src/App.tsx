@@ -9,6 +9,7 @@ import { GenreGridView, SeeAllViewData } from './components/GenreGridView';
 import { PasteYouTubeBar, PastedYouTubeVideo } from './components/PasteYouTubeBar';
 import { VideoPlayerPage, WatchableVideo } from './components/VideoPlayerPage';
 import { RoomPage } from './components/RoomPage';
+import { RoomErrorBoundary } from './components/RoomErrorBoundary';
 import { ModalMode, RoomModal, RoomVideoOption } from './components/RoomModal';
 import { WatchChoiceModal } from './components/WatchChoiceModal';
 import { ShareSheet } from './components/ShareSheet';
@@ -30,6 +31,7 @@ import {
   getOrCreateDeviceId,
   isRoomHost,
   isValidRoomCode,
+  normalizeRoomRecord,
   RoomRecord,
   SharedLibraryItem,
   supabase,
@@ -480,7 +482,15 @@ export default function App() {
     );
   };
 
-  const handleEnterRoom = (room: RoomRecord) => {
+  const handleEnterRoom = (rawRoom: RoomRecord) => {
+    const room = normalizeRoomRecord(rawRoom);
+    if (!room) {
+      setModalMode(null);
+      setActiveRoom(null);
+      setRoomNotFoundCode('INVALID');
+      return;
+    }
+
     if (room.locked && !isRoomHost(room)) {
       setModalMode(null);
       setActiveRoom(null);
@@ -504,9 +514,13 @@ export default function App() {
     setRoomLockedCode(null);
     setActiveRoom(room);
 
-    const url = new URL(window.location.href);
-    url.search = `?room=${encodeURIComponent(room.code)}`;
-    window.history.pushState({}, '', url.toString());
+    try {
+      const url = new URL(window.location.href);
+      url.search = `?room=${encodeURIComponent(room.code)}`;
+      window.history.pushState({}, '', url.toString());
+    } catch {
+      // Ignore history errors in restricted environments
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -766,17 +780,19 @@ export default function App() {
               </div>
             </section>
           ) : activeRoom ? (
-            <RoomPage
-              room={activeRoom}
-              username={userProfile?.username ?? ''}
-              sharedLibrary={sharedLibrary}
-              onBack={handleGoHome}
-              onShare={setShareTarget}
-              onRequestUsername={() => {
-                setUsernameModalDismissible(true);
-                setUsernameModalMode('claim');
-              }}
-            />
+            <RoomErrorBoundary roomCode={activeRoom.code} onBack={handleGoHome}>
+              <RoomPage
+                room={activeRoom}
+                username={userProfile?.username ?? ''}
+                sharedLibrary={sharedLibrary}
+                onBack={handleGoHome}
+                onShare={setShareTarget}
+                onRequestUsername={() => {
+                  setUsernameModalDismissible(true);
+                  setUsernameModalMode('claim');
+                }}
+              />
+            </RoomErrorBoundary>
           ) : watchingVideo ? (
             <VideoPlayerPage
               video={watchingVideo}

@@ -14,11 +14,15 @@ interface RoomPeopleListProps {
 }
 
 export function RoomPeopleList({ participants, compact = false }: RoomPeopleListProps) {
+  const safeParticipants = Array.isArray(participants) ? participants : [];
+
   // Sort host first, then current viewer, then alphabetically by name
-  const sorted = [...participants].sort((a, b) => {
-    if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
-    if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1;
-    return a.name.localeCompare(b.name);
+  const sorted = [...safeParticipants].sort((a, b) => {
+    if (Boolean(a?.isHost) !== Boolean(b?.isHost)) return a?.isHost ? -1 : 1;
+    if (Boolean(a?.isSelf) !== Boolean(b?.isSelf)) return a?.isSelf ? -1 : 1;
+    const nameA = typeof a?.name === 'string' ? a.name : '';
+    const nameB = typeof b?.name === 'string' ? b.name : '';
+    return nameA.localeCompare(nameB);
   });
 
   return (
@@ -36,7 +40,7 @@ export function RoomPeopleList({ participants, compact = false }: RoomPeopleList
           </h2>
         </div>
         <span className="rounded-md border border-[#2a2a33] bg-[#181820] px-2 py-0.5 font-mono text-xs text-zinc-200 tabular-nums">
-          {participants.length}
+          {safeParticipants.length}
         </span>
       </div>
 
@@ -46,7 +50,11 @@ export function RoomPeopleList({ participants, compact = false }: RoomPeopleList
         }`}
       >
         {sorted.map((person) => {
-          const initial = (person.name.trim().charAt(0) || 'G').toUpperCase();
+          const displayName =
+            typeof person?.name === 'string' && person.name.trim()
+              ? person.name.trim()
+              : 'Guest';
+          const initial = (displayName.charAt(0) || 'G').toUpperCase();
           return (
             <li
               key={person.clientId}
@@ -64,7 +72,7 @@ export function RoomPeopleList({ participants, compact = false }: RoomPeopleList
                   {initial}
                 </span>
                 <span className="truncate text-sm font-medium text-zinc-100">
-                  {person.name}
+                  {displayName}
                   {person.isSelf && (
                     <span className="ml-1.5 text-xs font-normal text-zinc-400">(you)</span>
                   )}

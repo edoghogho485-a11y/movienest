@@ -25,6 +25,32 @@ export type RoomControlsMode = 'everyone' | 'host';
 export const QUEUE_MAX_ITEMS = 20;
 const HOST_ID_STORAGE_KEY = 'movienest_host_id';
 
+// Explicit column list for all "rooms" queries so new columns are always fetched
+export const ROOM_SELECT_COLUMNS =
+  'id, code, name, video_id, source, video_url, is_playing, position_seconds, host_id, controls, locked, queue, updated_at, created_at';
+
+// Safe localStorage wrappers in case storage is empty, cleared, or blocked by browser privacy rules
+let memoryHostId: string | null = null;
+
+function safeGetLocalStorage(key: string): string | null {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
+    const val = window.localStorage.getItem(key);
+    return val ? val.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeSetLocalStorage(key: string, value: string): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage quota / privacy mode errors
+  }
+}
+
 export interface QueueItem {
   id: string;
   videoId: string;
@@ -55,32 +81,34 @@ export interface RoomRecord {
 
 // Get or create a persistent random host ID stored on this device
 export function getOrCreateDeviceHostId(): string {
-  try {
-    const existing = localStorage.getItem(HOST_ID_STORAGE_KEY)?.trim();
-    if (existing) return existing;
-
-    const generated =
-      typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    localStorage.setItem(HOST_ID_STORAGE_KEY, generated);
-    return generated;
-  } catch {
-    return `host-${Math.random().toString(36).slice(2, 12)}`;
+  const existing = safeGetLocalStorage(HOST_ID_STORAGE_KEY);
+  if (existing) {
+    memoryHostId = existing;
+    return existing;
   }
+
+  if (memoryHostId) {
+    safeSetLocalStorage(HOST_ID_STORAGE_KEY, memoryHostId);
+    return memoryHostId;
+  }
+
+  const generated =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  memoryHostId = generated;
+  safeSetLocalStorage(HOST_ID_STORAGE_KEY, generated);
+  return generated;
 }
 
 export function isRoomHost(room: Pick<RoomRecord, 'host_id'> | null | undefined): boolean {
   if (!room?.host_id) return false;
-  try {
-    const localHostId = localStorage.getItem(HOST_ID_STORAGE_KEY)?.trim();
-    return Boolean(localHostId && localHostId === room.host_id);
-  } catch {
-    return false;
-  }
+  const localHostId = safeGetLocalStorage(HOST_ID_STORAGE_KEY) || memoryHostId;
+  return Boolean(localHostId && localHostId === room.host_id);
 }
 
-// Normalize queue array from Supabase jsonb column (caps at 20 items)
+// Normalize queue array from Supabase jsonb column (treats null/missing as empty array, caps at 20)
 export function normalizeQueueItems(rawQueue: unknown): QueueItem[] {
   if (!Array.isArray(rawQueue)) return [];
   return rawQueue
@@ -97,6 +125,53 @@ export function normalizeQueueItems(rawQueue: unknown): QueueItem[] {
     .slice(0, QUEUE_MAX_ITEMS);
 }
 
+// Normalize a room row from Supabase so missing/null fields never crash RoomPage
+export function normalizeRoomRecord(raw: unknown): RoomRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const candidate = raw as Partial<RoomRecord>;
+
+  const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+  const code = typeof candidate.code === 'string' ? candidate.code.trim().toUpperCase() : '';
+  if (!id || !code) return null;
+
+  const nowIso = new Date().toISOString();
+  return {
+    id,
+    code,
+    name:
+      typeof candidate.name === 'string' && candidate.name.trim()
+        ? candidate.name
+        : 'Movie Room',
+    video_id: typeof candidate.video_id === 'string' ? candidate.video_id : '',
+    source: candidate.source === 'archive' ? 'archive' : 'youtube',
+    video_url:
+      typeof candidate.video_url === 'string' && candidate.video_url.trim()
+        ? candidate.video_url
+        : null,
+    is_playing: Boolean(candidate.is_playing),
+    position_seconds:
+      typeof candidate.position_seconds === 'number' &&
+      Number.isFinite(candidate.position_seconds)
+        ? Math.max(0, Math.floor(candidate.position_seconds))
+        : 0,
+    host_id:
+      typeof candidate.host_id === 'string' && candidate.host_id.trim()
+        ? candidate.host_id.trim()
+        : null,
+    controls: candidate.controls === 'host' ? 'host' : 'everyone',
+    locked: Boolean(candidate.locked),
+    queue: normalizeQueueItems(candidate.queue),
+    updated_at:
+      typeof candidate.updated_at === 'string' && candidate.updated_at
+        ? candidate.updated_at
+        : nowIso,
+    created_at:
+      typeof candidate.created_at === 'string' && candidate.created_at
+        ? candidate.created_at
+        : nowIso,
+  };
+}
+
 // Easy-to-read alphabet: excludes ambiguous 0, O, 1, I, L
 const ROOM_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -110,10 +185,14 @@ export function generateRoomCode(): string {
 }
 
 export function getInviteLink(code: string): string {
-  const url = new URL(window.location.href);
-  url.search = `?room=${encodeURIComponent(code)}`;
-  url.hash = '';
-  return url.toString();
+  try {
+    const url = new URL(window.location.href);
+    url.search = `?room=${encodeURIComponent(code)}`;
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return `?room=${encodeURIComponent(code)}`;
+  }
 }
 
 export async function createRoomInSupabase(params: {
@@ -140,7 +219,7 @@ export async function createRoomInSupabase(params: {
     };
   }
 
-  const videoSource = params.source ?? 'youtube';
+  const videoSource = params.source === 'archive' ? 'archive' : 'youtube';
   if (
     videoSource === 'archive' &&
     (!params.videoUrl || !params.videoUrl.startsWith('https://archive.org/download/'))
@@ -196,12 +275,26 @@ export async function createRoomInSupabase(params: {
         locked: false,
         queue: [],
       })
-      .select()
+      .select(ROOM_SELECT_COLUMNS)
       .single();
 
     if (!error && data) {
-      lastRoomCreatedAt = Date.now();
-      return { room: data as RoomRecord, error: null };
+      const normalizedRoom = normalizeRoomRecord(data);
+      if (normalizedRoom) {
+        lastRoomCreatedAt = Date.now();
+        return {
+          room: {
+            ...normalizedRoom,
+            // Preserve the local host_id if the table defaulted or omitted it
+            host_id: normalizedRoom.host_id ?? hostId,
+          },
+          error: null,
+        };
+      }
+      return {
+        room: null,
+        error: 'Room was saved in an unexpected format. Please try again.',
+      };
     }
 
     // Retry if another user took the same code between our check and insert
@@ -229,7 +322,7 @@ export async function findRoomByCode(
 
   const { data, error } = await supabase
     .from('rooms')
-    .select('*')
+    .select(ROOM_SELECT_COLUMNS)
     .ilike('code', cleanCode)
     .maybeSingle();
 
@@ -240,7 +333,7 @@ export async function findRoomByCode(
     };
   }
 
-  return { room: (data as RoomRecord | null) ?? null, error: null };
+  return { room: normalizeRoomRecord(data), error: null };
 }
 
 // Persist play/pause and timestamp changes to the room row for Realtime sync
@@ -599,26 +692,31 @@ export function isValidUsernameFormat(rawName: string): boolean {
   return USERNAME_PATTERN.test(rawName.trim());
 }
 
+let memoryDeviceId: string | null = null;
+
 // Generate and store a persistent random device ID (at least 20 chars) in localStorage
 export function getOrCreateDeviceId(): string {
-  try {
-    const existing = localStorage.getItem(DEVICE_ID_STORAGE_KEY)?.trim();
-    if (existing && existing.length >= 20) {
-      return existing;
-    }
-
-    const randomPart =
-      typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID().replace(/-/g, '')
-        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random()
-            .toString(36)
-            .slice(2)}`;
-    const deviceId = randomPart.length >= 20 ? randomPart : randomPart.padEnd(24, '0');
-    localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
-    return deviceId;
-  } catch {
-    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`.padEnd(24, 'x');
+  const existing = safeGetLocalStorage(DEVICE_ID_STORAGE_KEY);
+  if (existing && existing.length >= 20) {
+    memoryDeviceId = existing;
+    return existing;
   }
+
+  if (memoryDeviceId && memoryDeviceId.length >= 20) {
+    safeSetLocalStorage(DEVICE_ID_STORAGE_KEY, memoryDeviceId);
+    return memoryDeviceId;
+  }
+
+  const randomPart =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '')
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random()
+          .toString(36)
+          .slice(2)}`;
+  const deviceId = randomPart.length >= 20 ? randomPart : randomPart.padEnd(24, '0');
+  memoryDeviceId = deviceId;
+  safeSetLocalStorage(DEVICE_ID_STORAGE_KEY, deviceId);
+  return deviceId;
 }
 
 export function getUsernameRpcErrorMessage(
