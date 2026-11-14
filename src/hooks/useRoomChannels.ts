@@ -18,6 +18,7 @@ interface UseRoomChannelsParams {
   roomCode: string;
   username: string;
   isHost: boolean;
+  independentMode: boolean;
   onRoomUpdated: (updated: RoomRecord) => void;
   onReactionReceived: (payload: { id: string; emoji: string; sender?: string }) => void;
   onActivityReceived: (payload: {
@@ -42,6 +43,7 @@ export function useRoomChannels({
   roomCode,
   username,
   isHost,
+  independentMode,
   onRoomUpdated,
   onReactionReceived,
   onActivityReceived,
@@ -75,6 +77,8 @@ export function useRoomChannels({
   usernameRef.current = cleanUsername;
   const isHostRef = useRef(isHost);
   isHostRef.current = isHost;
+  const independentModeRef = useRef(independentMode);
+  independentModeRef.current = independentMode;
 
   const onRoomUpdatedRef = useRef(onRoomUpdated);
   onRoomUpdatedRef.current = onRoomUpdated;
@@ -225,6 +229,7 @@ export function useRoomChannels({
           const latest = (entries.length > 0 ? entries[entries.length - 1] : {}) as {
             name?: unknown;
             isHost?: unknown;
+            independentMode?: unknown;
             joinedAt?: unknown;
           } | null;
           const name =
@@ -237,6 +242,7 @@ export function useRoomChannels({
             name,
             isHost: Boolean(latest?.isHost),
             isSelf: key === clientIdRef.current,
+            independentMode: Boolean(latest?.independentMode),
             joinedAt: typeof latest?.joinedAt === 'string' ? latest.joinedAt : '',
           };
         });
@@ -247,6 +253,7 @@ export function useRoomChannels({
             name: usernameRef.current || 'Guest',
             isHost: isHostRef.current,
             isSelf: true,
+            independentMode: independentModeRef.current,
             joinedAt: '',
           });
         }
@@ -357,6 +364,7 @@ export function useRoomChannels({
               await liveChannel.track({
                 name: usernameRef.current || 'Guest',
                 isHost: isHostRef.current,
+                independentMode: independentModeRef.current,
                 joinedAt: new Date().toISOString(),
               });
             } catch {
@@ -409,7 +417,7 @@ export function useRoomChannels({
     };
   }, [cleanRoomCode]);
 
-  // Update presence metadata when username or host status changes while already subscribed
+  // Update presence metadata when username, host status, or independent mode changes while subscribed
   useEffect(() => {
     const liveChannel = liveChannelRef.current;
     if (!liveChannel || syncStatus !== 'synced') return;
@@ -418,10 +426,11 @@ export function useRoomChannels({
       .track({
         name: cleanUsername || 'Guest',
         isHost,
+        independentMode,
         joinedAt: new Date().toISOString(),
       })
       .catch(() => {});
-  }, [cleanUsername, isHost, syncStatus]);
+  }, [cleanUsername, isHost, independentMode, syncStatus]);
 
   const sendChatMessage = useCallback(
     async (body: string): Promise<{ ok: boolean; error: string | null }> => {

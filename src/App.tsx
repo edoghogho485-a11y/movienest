@@ -189,6 +189,7 @@ export default function App() {
   });
 
   const [activeRoom, setActiveRoom] = useState<RoomRecord | null>(null);
+  const [justCreatedRoomCode, setJustCreatedRoomCode] = useState<string | null>(null);
   const [roomLoading, setRoomLoading] = useState<boolean>(() => Boolean(getRoomCodeFromUrl()));
   const [roomNotFoundCode, setRoomNotFoundCode] = useState<string | null>(null);
   const [roomLockedCode, setRoomLockedCode] = useState<string | null>(null);
@@ -261,6 +262,7 @@ export default function App() {
         setUsernameModalMode('claim');
         return;
       }
+      setJustCreatedRoomCode(null);
       setActiveRoom(room);
       setWatchingVideo(null);
       setSeeAllData(null);
@@ -637,6 +639,7 @@ export default function App() {
     setSeeAllData(null);
     setRoomNotFoundCode(null);
     setRoomLockedCode(null);
+    setJustCreatedRoomCode(modalMode === 'create' ? room.code : null);
     setActiveRoom(room);
 
     try {
@@ -910,6 +913,7 @@ export default function App() {
                 room={activeRoom}
                 username={userProfile?.username ?? ''}
                 sharedLibrary={sharedLibrary}
+                justCreated={justCreatedRoomCode === activeRoom.code}
                 onBack={handleGoHome}
                 onShare={setShareTarget}
                 onRequestUsername={() => {

@@ -5,6 +5,7 @@ export interface RoomParticipant {
   name: string;
   isHost: boolean;
   isSelf: boolean;
+  independentMode?: boolean;
   joinedAt: string;
 }
 
@@ -79,12 +80,19 @@ export function RoomPeopleList({ participants, compact = false }: RoomPeopleList
                 </span>
               </div>
 
-              {person.isHost && (
-                <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#E50914]/40 bg-[#1b1013] px-2 py-0.5 text-[11px] font-semibold text-[#E50914]">
-                  <Crown className="h-3 w-3" aria-hidden="true" />
-                  <span>Host</span>
-                </span>
-              )}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {person.independentMode && (
+                  <span className="inline-flex items-center rounded-md border border-white/15 bg-[#1b1b24] px-2 py-0.5 text-[11px] font-medium text-zinc-300">
+                    Own pace
+                  </span>
+                )}
+                {person.isHost && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-[#E50914]/40 bg-[#1b1013] px-2 py-0.5 text-[11px] font-semibold text-[#E50914]">
+                    <Crown className="h-3 w-3" aria-hidden="true" />
+                    <span>Host</span>
+                  </span>
+                )}
+              </div>
             </li>
           );
         })}
