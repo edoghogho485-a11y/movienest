@@ -573,3 +573,190 @@ export async function upsertSearchCache<T = unknown>(
     { onConflict: 'query' }
   );
 }
+
+// --- Unique Usernames & Persistent Device Identity ---
+
+export const DEVICE_ID_STORAGE_KEY = 'movienest_device';
+export const USERNAME_MIN_LENGTH = 3;
+export const USERNAME_MAX_LENGTH = 20;
+export const USERNAME_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
+
+export interface UserProfile {
+  username: string;
+  changes: number;
+}
+
+export type UsernameRpcStatus =
+  | 'ok'
+  | 'taken'
+  | 'invalid'
+  | 'reserved'
+  | 'already_set'
+  | 'not_found'
+  | 'limit_reached';
+
+export function isValidUsernameFormat(rawName: string): boolean {
+  return USERNAME_PATTERN.test(rawName.trim());
+}
+
+// Generate and store a persistent random device ID (at least 20 chars) in localStorage
+export function getOrCreateDeviceId(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_ID_STORAGE_KEY)?.trim();
+    if (existing && existing.length >= 20) {
+      return existing;
+    }
+
+    const randomPart =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID().replace(/-/g, '')
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random()
+            .toString(36)
+            .slice(2)}`;
+    const deviceId = randomPart.length >= 20 ? randomPart : randomPart.padEnd(24, '0');
+    localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
+    return deviceId;
+  } catch {
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`.padEnd(24, 'x');
+  }
+}
+
+export function getUsernameRpcErrorMessage(
+  status: UsernameRpcStatus | 'error'
+): string {
+  switch (status) {
+    case 'taken':
+      return 'That username is already taken. Please try another one.';
+    case 'reserved':
+      return 'That username is reserved. Please pick a different one.';
+    case 'invalid':
+      return 'Use 3 to 20 characters with letters, numbers, and underscores only.';
+    case 'already_set':
+      return 'This device already has a username.';
+    case 'not_found':
+      return 'Could not find your existing username record.';
+    case 'limit_reached':
+      return "You've already used your one username change.";
+    default:
+      return 'Could not save your username right now. Please try again.';
+  }
+}
+
+// Check if a username is currently available via RPC username_available(p_name)
+export async function checkUsernameAvailable(
+  rawName: string
+): Promise<boolean | null> {
+  const cleanName = rawName.trim();
+  if (!isValidUsernameFormat(cleanName)) return null;
+
+  const { data, error } = await supabase.rpc('username_available', {
+    p_name: cleanName,
+  });
+
+  if (error || typeof data !== 'boolean') {
+    return null;
+  }
+  return data;
+}
+
+// Restore username & change count for this device via RPC get_my_username(p_device)
+export async function getMyUsername(
+  deviceId = getOrCreateDeviceId()
+): Promise<UserProfile | null> {
+  const { data, error } = await supabase.rpc('get_my_username', {
+    p_device: deviceId,
+  });
+
+  if (error || !data) {
+    return null;
+  }
+
+  // Handle either single object return or single-row array return from Postgres RPC
+  const record = Array.isArray(data) ? data[0] : data;
+  if (!record || typeof record !== 'object') {
+    return null;
+  }
+
+  const candidate = record as { username?: unknown; changes?: unknown };
+  if (typeof candidate.username !== 'string' || !candidate.username.trim()) {
+    return null;
+  }
+
+  return {
+    username: candidate.username.trim(),
+    changes: typeof candidate.changes === 'number' ? candidate.changes : 0,
+  };
+}
+
+// Claim a first username for this device via RPC claim_username(p_device, p_name)
+export async function claimUsername(
+  rawName: string,
+  deviceId = getOrCreateDeviceId()
+): Promise<{ status: UsernameRpcStatus | 'error'; error: string | null }> {
+  const cleanName = rawName.trim();
+  if (!isValidUsernameFormat(cleanName)) {
+    return {
+      status: 'invalid',
+      error: getUsernameRpcErrorMessage('invalid'),
+    };
+  }
+
+  const { data, error } = await supabase.rpc('claim_username', {
+    p_device: deviceId,
+    p_name: cleanName,
+  });
+
+  if (error || typeof data !== 'string') {
+    return {
+      status: 'error',
+      error: getUsernameRpcErrorMessage('error'),
+    };
+  }
+
+  const status = data as UsernameRpcStatus;
+  if (status === 'ok') {
+    return { status: 'ok', error: null };
+  }
+
+  return {
+    status,
+    error: getUsernameRpcErrorMessage(status),
+  };
+}
+
+// Change username once for this device via RPC change_username(p_device, p_name)
+export async function changeUsername(
+  rawName: string,
+  deviceId = getOrCreateDeviceId()
+): Promise<{ status: UsernameRpcStatus | 'error'; error: string | null }> {
+  const cleanName = rawName.trim();
+  if (!isValidUsernameFormat(cleanName)) {
+    return {
+      status: 'invalid',
+      error: getUsernameRpcErrorMessage('invalid'),
+    };
+  }
+
+  const { data, error } = await supabase.rpc('change_username', {
+    p_device: deviceId,
+    p_name: cleanName,
+  });
+
+  if (error || typeof data !== 'string') {
+    return {
+      status: 'error',
+      error: getUsernameRpcErrorMessage('error'),
+    };
+  }
+
+  const status = data as UsernameRpcStatus;
+  if (status === 'ok') {
+    return { status: 'ok', error: null };
+  }
+
+  return {
+    status,
+    error: getUsernameRpcErrorMessage(status),
+  };
+}
+

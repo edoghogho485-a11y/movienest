@@ -1,21 +1,19 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Send } from 'lucide-react';
+import { AtSign, Send } from 'lucide-react';
 import {
   CHAT_MESSAGE_MAX_LENGTH,
-  DISPLAY_NAME_MAX_LENGTH,
   fetchRoomMessages,
   RoomMessage,
   sendRoomMessage,
   supabase,
 } from '../lib/supabase';
 
-export const DISPLAY_NAME_STORAGE_KEY = 'movienest_display_name';
 const CHAT_COOLDOWN_MS = 1000;
 
 interface RoomChatProps {
   roomCode: string;
-  displayName?: string;
-  onDisplayNameChange?: (name: string) => void;
+  username: string;
+  onRequestUsername?: () => void;
   inMobileTab?: boolean;
 }
 
@@ -27,27 +25,10 @@ function formatMessageTime(isoDate: string): string {
 
 export function RoomChat({
   roomCode,
-  displayName: controlledDisplayName,
-  onDisplayNameChange,
+  username,
+  onRequestUsername,
   inMobileTab = false,
 }: RoomChatProps) {
-  // Remember the viewer's display name on this device (capped at 30 chars)
-  const [internalDisplayName, setInternalDisplayName] = useState<string>(() => {
-    try {
-      return (
-        localStorage
-          .getItem(DISPLAY_NAME_STORAGE_KEY)
-          ?.trim()
-          .slice(0, DISPLAY_NAME_MAX_LENGTH) ?? ''
-      );
-    } catch {
-      return '';
-    }
-  });
-  const displayName =
-    controlledDisplayName !== undefined ? controlledDisplayName : internalDisplayName;
-  const [nameInput, setNameInput] = useState('');
-
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [messageText, setMessageText] = useState('');
@@ -81,7 +62,6 @@ export function RoomChat({
         return;
       }
       setMessages(initial);
-      // Jump to bottom once initial messages render
       window.requestAnimationFrame(() => scrollToBottom(false));
     });
 
@@ -97,7 +77,6 @@ export function RoomChat({
         },
         (payload) => {
           const incoming = payload.new as RoomMessage;
-          // Deduplicate by message id so optimistic inserts never appear twice
           setMessages((prev) => {
             if (prev.some((m) => m.id === incoming.id)) {
               return prev;
@@ -121,27 +100,15 @@ export function RoomChat({
     }
   }, [messages.length, loading]);
 
-  const handleSaveName = (e: FormEvent) => {
-    e.preventDefault();
-    const cleaned = nameInput.trim().slice(0, DISPLAY_NAME_MAX_LENGTH);
-    if (!cleaned) return;
-    try {
-      localStorage.setItem(DISPLAY_NAME_STORAGE_KEY, cleaned);
-    } catch {
-      // Ignore storage quota errors
-    }
-    if (onDisplayNameChange) {
-      onDisplayNameChange(cleaned);
-    } else {
-      setInternalDisplayName(cleaned);
-    }
-    setNameInput('');
-  };
-
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
     const trimmed = messageText.trim();
-    if (!trimmed || !displayName || sending) return;
+    if (!trimmed || sending) return;
+
+    if (!username) {
+      onRequestUsername?.();
+      return;
+    }
 
     // Limit each person to one chat message per second
     const now = Date.now();
@@ -158,7 +125,7 @@ export function RoomChat({
 
     const { message, error } = await sendRoomMessage({
       roomCode,
-      senderName: displayName,
+      senderName: username,
       body: clipped,
     });
 
@@ -187,80 +154,58 @@ export function RoomChat({
         <h2 className="font-display text-sm font-semibold text-white">
           Room Chat
         </h2>
-        {displayName && (
+        {username && (
           <span className="truncate text-xs text-zinc-400">
-            Chatting as <span className="font-medium text-[#E50914]">{displayName}</span>
+            Chatting as <span className="font-medium text-[#E50914]">@{username}</span>
           </span>
         )}
       </div>
 
-      {!displayName ? (
-        <div className="flex flex-1 flex-col justify-center p-5">
-          <p className="font-display text-base font-semibold text-white">
-            Pick a display name
+      <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3.5">
+        {loading ? (
+          <p className="text-xs text-zinc-400">Loading messages...</p>
+        ) : messages.length === 0 ? (
+          <p className="text-xs leading-relaxed text-zinc-400">
+            No messages yet. Say hello to everyone in the room.
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-zinc-400">
-            Friends in this room will see this name next to your messages. Remembered on this
-            device.
-          </p>
-          <form onSubmit={handleSaveName} className="mt-4 space-y-3">
-            <input
-              type="text"
-              value={nameInput}
-              onChange={(e) => setNameInput(e.target.value.slice(0, DISPLAY_NAME_MAX_LENGTH))}
-              maxLength={DISPLAY_NAME_MAX_LENGTH}
-              placeholder="Your name..."
-              aria-label="Display name"
-              className="w-full min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] px-3.5 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
-            />
-            <button
-              type="submit"
-              disabled={!nameInput.trim()}
-              className="w-full min-h-[44px] rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
-            >
-              Join Chat
-            </button>
-          </form>
-        </div>
-      ) : (
-        <>
-          <div
-            ref={listRef}
-            className="flex-1 space-y-3 overflow-y-auto px-4 py-3.5"
-          >
-            {loading ? (
-              <p className="text-xs text-zinc-400">Loading messages...</p>
-            ) : messages.length === 0 ? (
-              <p className="text-xs leading-relaxed text-zinc-400">
-                No messages yet. Say hello to everyone in the room.
-              </p>
-            ) : (
-              messages.map((msg) => {
-                const isSelf = msg.sender_name === displayName;
-                return (
-                  <div key={msg.id} className="space-y-0.5">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span
-                        className={`text-xs font-semibold ${
-                          isSelf ? 'text-[#E50914]' : 'text-zinc-200'
-                        }`}
-                      >
-                        {msg.sender_name}
-                      </span>
-                      <span className="font-mono text-[11px] text-zinc-500 tabular-nums shrink-0">
-                        {formatMessageTime(msg.created_at)}
-                      </span>
-                    </div>
-                    <p className="break-words text-sm leading-snug text-zinc-300">
-                      {msg.body}
-                    </p>
-                  </div>
-                );
-              })
-            )}
-          </div>
+        ) : (
+          messages.map((msg) => {
+            const isSelf = Boolean(username && msg.sender_name === username);
+            return (
+              <div key={msg.id} className="space-y-0.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span
+                    className={`text-xs font-semibold ${
+                      isSelf ? 'text-[#E50914]' : 'text-zinc-200'
+                    }`}
+                  >
+                    {msg.sender_name}
+                  </span>
+                  <span className="font-mono text-[11px] text-zinc-500 tabular-nums shrink-0">
+                    {formatMessageTime(msg.created_at)}
+                  </span>
+                </div>
+                <p className="break-words text-sm leading-snug text-zinc-300">
+                  {msg.body}
+                </p>
+              </div>
+            );
+          })
+        )}
+      </div>
 
-          <div className="border-t border-white/10 bg-[#181820] p-3">
+      <div className="border-t border-white/10 bg-[#181820] p-3">
+        {!username ? (
+          <button
+            type="button"
+            onClick={onRequestUsername}
+            className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+          >
+            <AtSign className="h-4 w-4" aria-hidden="true" />
+            <span>Choose your username to chat</span>
+          </button>
+        ) : (
+          <>
             {errorMsg && (
               <p className="mb-2 text-xs text-[#F87171]" role="alert">
                 {errorMsg}
@@ -293,9 +238,9 @@ export function RoomChat({
                 {messageText.length}/{CHAT_MESSAGE_MAX_LENGTH}
               </p>
             )}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </aside>
   );
 }

@@ -27,7 +27,6 @@ import {
 } from '../lib/archive';
 import { copyTextToClipboard, ShareTarget } from '../lib/share';
 import {
-  DISPLAY_NAME_MAX_LENGTH,
   findRoomByCode,
   getInviteLink,
   isRoomHost,
@@ -48,7 +47,7 @@ import {
   loadYouTubeIframeAPI,
   YTPlayer,
 } from '../lib/youtube';
-import { DISPLAY_NAME_STORAGE_KEY, RoomChat } from './RoomChat';
+import { RoomChat } from './RoomChat';
 import { RoomParticipant, RoomPeopleList } from './RoomPeopleList';
 import { RoomQueuePanel } from './RoomQueuePanel';
 import { RoomSettingsModal } from './RoomSettingsModal';
@@ -63,6 +62,7 @@ const REACTION_COOLDOWN_MS = 1000;
 interface FloatingReaction {
   id: string;
   emoji: string;
+  sender?: string;
   leftPercent: number;
 }
 
@@ -134,12 +134,21 @@ function makeClientOrEventId(prefix = 'evt'): string {
 
 interface RoomPageProps {
   room: RoomRecord;
+  username: string;
   sharedLibrary: SharedLibraryItem[];
   onBack: () => void;
   onShare: (target: ShareTarget) => void;
+  onRequestUsername: () => void;
 }
 
-export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps) {
+export function RoomPage({
+  room,
+  username,
+  sharedLibrary,
+  onBack,
+  onShare,
+  onRequestUsername,
+}: RoomPageProps) {
   const [currentRoom, setCurrentRoom] = useState<RoomRecord>(room);
   useEffect(() => {
     setCurrentRoom(room);
@@ -152,20 +161,6 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
   const isLocked = Boolean(currentRoom.locked);
   const canControlPlayback = controlsMode === 'everyone' || isHost;
   const queue = normalizeQueueItems(currentRoom.queue);
-
-  // Shared display name synced between RoomChat and Realtime presence
-  const [displayName, setDisplayName] = useState<string>(() => {
-    try {
-      return (
-        localStorage
-          .getItem(DISPLAY_NAME_STORAGE_KEY)
-          ?.trim()
-          .slice(0, DISPLAY_NAME_MAX_LENGTH) ?? ''
-      );
-    } catch {
-      return '';
-    }
-  });
 
   const [copied, setCopied] = useState(false);
   const [resyncing, setResyncing] = useState(false);
@@ -222,8 +217,8 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
   latestRoomStateRef.current = roomState;
   const latestCanControlRef = useRef(canControlPlayback);
   latestCanControlRef.current = canControlPlayback;
-  const latestDisplayNameRef = useRef(displayName);
-  latestDisplayNameRef.current = displayName;
+  const latestUsernameRef = useRef(username);
+  latestUsernameRef.current = username;
   const latestIsHostRef = useRef(isHost);
   latestIsHostRef.current = isHost;
 
@@ -272,12 +267,12 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     }
   }, []);
 
-  // Spawn an emoji that floats up over the video
-  const spawnFloatingReaction = (id: string, emoji: string) => {
+  // Spawn an emoji (with sender's username) that floats up over the video
+  const spawnFloatingReaction = (id: string, emoji: string, sender?: string) => {
     const leftPercent = 14 + Math.floor(Math.random() * 72);
     setFloatingReactions((prev) => {
       if (prev.some((item) => item.id === id)) return prev;
-      return [...prev.slice(-18), { id, emoji, leftPercent }];
+      return [...prev.slice(-18), { id, emoji, sender, leftPercent }];
     });
 
     window.setTimeout(() => {
@@ -288,7 +283,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
   // Broadcast an activity notice so other people in the room see a toast
   const broadcastActivity = useCallback(
     (action: ActivityAction, positionSeconds = 0) => {
-      const actor = latestDisplayNameRef.current.trim() || 'Someone';
+      const actor = latestUsernameRef.current.trim() || 'Someone';
       void roomChannelRef.current?.send({
         type: 'broadcast',
         event: 'activity',
@@ -763,7 +758,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
       if (list.length === 0) {
         list.push({
           clientId: clientIdRef.current,
-          name: latestDisplayNameRef.current.trim() || 'Guest',
+          name: latestUsernameRef.current.trim() || 'Guest',
           isHost: latestIsHostRef.current,
           isSelf: true,
           joinedAt: '',
@@ -821,9 +816,9 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
         }
       )
       .on('broadcast', { event: 'reaction' }, ({ payload }) => {
-        const data = payload as { id?: string; emoji?: string } | null;
+        const data = payload as { id?: string; emoji?: string; sender?: string } | null;
         if (data?.id && data?.emoji) {
-          spawnFloatingReaction(data.id, data.emoji);
+          spawnFloatingReaction(data.id, data.emoji, data.sender);
         }
       })
       .on('broadcast', { event: 'activity' }, ({ payload }) => {
@@ -904,7 +899,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
         if (status === 'SUBSCRIBED') {
           setSyncStatus('synced');
           await channel.track({
-            name: latestDisplayNameRef.current.trim() || 'Guest',
+            name: latestUsernameRef.current.trim() || 'Guest',
             isHost: latestIsHostRef.current,
             joinedAt: new Date().toISOString(),
           });
@@ -929,17 +924,17 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     };
   }, [currentRoom.id, applyRemoteStateToPlayer, runSyncedCountdown, showToast]);
 
-  // Update Realtime presence whenever the viewer updates their display name
+  // Update Realtime presence whenever the viewer sets or changes their username
   useEffect(() => {
     const channel = roomChannelRef.current;
     if (!channel || syncStatus !== 'synced') return;
 
     void channel.track({
-      name: displayName.trim() || 'Guest',
+      name: username.trim() || 'Guest',
       isHost,
       joinedAt: new Date().toISOString(),
     });
-  }, [displayName, isHost, syncStatus]);
+  }, [username, isHost, syncStatus]);
 
   const handleCopyInvite = async () => {
     const ok = await copyTextToClipboard(inviteLink);
@@ -958,7 +953,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     });
   };
 
-  // Broadcast emoji reaction (limited to 1 reaction per second per viewer)
+  // Broadcast emoji reaction with username (limited to 1 reaction per second per viewer)
   const handleSendReaction = (emoji: string) => {
     const now = Date.now();
     if (now - lastReactionAtRef.current < REACTION_COOLDOWN_MS) {
@@ -971,12 +966,13 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     setReactionNote(null);
 
     const id = makeClientOrEventId('react');
-    spawnFloatingReaction(id, emoji);
+    const sender = username.trim() || undefined;
+    spawnFloatingReaction(id, emoji, sender);
 
     void roomChannelRef.current?.send({
       type: 'broadcast',
       event: 'reaction',
-      payload: { id, emoji },
+      payload: { id, emoji, sender },
     });
   };
 
@@ -1074,7 +1070,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
       thumbnail: movie.thumbnail,
       source: movie.source,
       videoUrl: movie.source === 'archive' ? movie.videoUrl ?? null : null,
-      addedBy: displayName.trim() || undefined,
+      addedBy: username.trim() || undefined,
     };
 
     const nextQueue = [...currentQueue, entry];
@@ -1415,13 +1411,20 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
                 className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
               >
                 {floatingReactions.map((reaction) => (
-                  <span
+                  <div
                     key={reaction.id}
                     style={{ left: `${reaction.leftPercent}%`, bottom: '12%' }}
-                    className="animate-float-reaction absolute text-3xl sm:text-4xl select-none"
+                    className="animate-float-reaction absolute flex flex-col items-center select-none"
                   >
-                    {reaction.emoji}
-                  </span>
+                    <span className="text-3xl sm:text-4xl leading-none">
+                      {reaction.emoji}
+                    </span>
+                    {reaction.sender && (
+                      <span className="mt-0.5 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-medium text-zinc-200">
+                        {reaction.sender}
+                      </span>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
@@ -1601,8 +1604,8 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
             {mobileTab === 'chat' && (
               <RoomChat
                 roomCode={currentRoom.code}
-                displayName={displayName}
-                onDisplayNameChange={setDisplayName}
+                username={username}
+                onRequestUsername={onRequestUsername}
                 inMobileTab
               />
             )}
@@ -1626,8 +1629,8 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
             <RoomPeopleList participants={participants} compact />
             <RoomChat
               roomCode={currentRoom.code}
-              displayName={displayName}
-              onDisplayNameChange={setDisplayName}
+              username={username}
+              onRequestUsername={onRequestUsername}
             />
           </div>
         </div>

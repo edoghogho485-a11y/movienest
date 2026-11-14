@@ -12,6 +12,7 @@ import { RoomPage } from './components/RoomPage';
 import { ModalMode, RoomModal, RoomVideoOption } from './components/RoomModal';
 import { WatchChoiceModal } from './components/WatchChoiceModal';
 import { ShareSheet } from './components/ShareSheet';
+import { UsernameModal, UsernameModalMode } from './components/UsernameModal';
 import { YouTubeMovieCard } from './components/YouTubeMovieCard';
 import { LIBRARY_VIDEOS } from './data/libraryVideos';
 import { FEATURED_VIDEOS } from './data/videos';
@@ -25,11 +26,14 @@ import {
 import {
   fetchSharedLibrary,
   findRoomByCode,
+  getMyUsername,
+  getOrCreateDeviceId,
   isRoomHost,
   isValidRoomCode,
   RoomRecord,
   SharedLibraryItem,
   supabase,
+  UserProfile,
 } from './lib/supabase';
 import {
   getYouTubeThumbnail,
@@ -172,6 +176,16 @@ export default function App() {
   const [roomNotFoundCode, setRoomNotFoundCode] = useState<string | null>(null);
   const [roomLockedCode, setRoomLockedCode] = useState<string | null>(null);
 
+  // Unique persistent device username state
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [usernameLoading, setUsernameLoading] = useState(true);
+  const [usernameModalMode, setUsernameModalMode] = useState<UsernameModalMode>(null);
+  const [usernameModalDismissible, setUsernameModalDismissible] = useState(true);
+  const pendingRoomAfterUsernameRef = useRef<RoomRecord | null>(null);
+  const pendingActionAfterUsernameRef = useRef<(() => void) | null>(null);
+  const userProfileRef = useRef<UserProfile | null>(null);
+  userProfileRef.current = userProfile;
+
   const [sharedLibrary, setSharedLibrary] = useState<SharedLibraryItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const libraryLoadedRef = useRef(false);
@@ -222,6 +236,14 @@ export default function App() {
         setRoomLockedCode(normalized);
         return;
       }
+      if (!userProfileRef.current) {
+        // Hold room entry until the visitor chooses a unique username
+        pendingRoomAfterUsernameRef.current = room;
+        setActiveRoom(null);
+        setUsernameModalDismissible(false);
+        setUsernameModalMode('claim');
+        return;
+      }
       setActiveRoom(room);
       setWatchingVideo(null);
       setSeeAllData(null);
@@ -236,11 +258,26 @@ export default function App() {
     const initialWatchId = getWatchIdFromUrl();
     const initialArchiveId = getArchiveIdFromUrl();
 
-    if (initialRoomCode) {
-      void loadRoomByCode(initialRoomCode);
-    } else if (initialWatchId || initialArchiveId) {
-      setLibraryLoading(false);
-    }
+    const bootstrapApp = async () => {
+      // Create or read persistent device ID ("movienest_device") and restore username on every load
+      const deviceId = getOrCreateDeviceId();
+      const restoredProfile = await getMyUsername(deviceId);
+      userProfileRef.current = restoredProfile;
+      setUserProfile(restoredProfile);
+      setUsernameLoading(false);
+
+      if (initialRoomCode) {
+        await loadRoomByCode(initialRoomCode);
+      } else if (initialWatchId || initialArchiveId) {
+        setLibraryLoading(false);
+      } else if (!restoredProfile) {
+        // First visit on browse page: show "Choose your username" pop-up
+        setUsernameModalDismissible(true);
+        setUsernameModalMode('claim');
+      }
+    };
+
+    void bootstrapApp();
 
     const handlePopState = () => {
       const code = getRoomCodeFromUrl();
@@ -316,10 +353,22 @@ export default function App() {
     };
   }, [Boolean(watchingVideo)]);
 
+  const requireUsernameBefore = (action: () => void, dismissible = true) => {
+    if (userProfileRef.current) {
+      action();
+      return;
+    }
+    pendingActionAfterUsernameRef.current = action;
+    setUsernameModalDismissible(dismissible);
+    setUsernameModalMode('claim');
+  };
+
   const openCreateRoom = (video?: RoomVideoOption, positionSeconds = 0) => {
-    setSelectedVideo(video ?? null);
-    setStartSeconds(positionSeconds);
-    setModalMode('create');
+    requireUsernameBefore(() => {
+      setSelectedVideo(video ?? null);
+      setStartSeconds(positionSeconds);
+      setModalMode('create');
+    });
   };
 
   const openCreateRoomFromPasted = (pasted: PastedYouTubeVideo) => {
@@ -351,9 +400,11 @@ export default function App() {
   };
 
   const openJoinRoom = () => {
-    setSelectedVideo(null);
-    setStartSeconds(0);
-    setModalMode('join');
+    requireUsernameBefore(() => {
+      setSelectedVideo(null);
+      setStartSeconds(0);
+      setModalMode('join');
+    });
   };
 
   // Start Watch Alone solo mode with ?watch=VIDEO_ID or ?archive=IDENTIFIER (zero Supabase writes)
@@ -434,6 +485,14 @@ export default function App() {
       setModalMode(null);
       setActiveRoom(null);
       setRoomLockedCode(room.code);
+      return;
+    }
+
+    if (!userProfileRef.current) {
+      pendingRoomAfterUsernameRef.current = room;
+      setModalMode(null);
+      setUsernameModalDismissible(false);
+      setUsernameModalMode('claim');
       return;
     }
 
@@ -556,6 +615,12 @@ export default function App() {
 
   const handleWatchPartyInlineJoin = async (e: FormEvent) => {
     e.preventDefault();
+    if (!userProfileRef.current) {
+      setUsernameModalDismissible(true);
+      setUsernameModalMode('claim');
+      return;
+    }
+
     const cleanCode = extractRoomCode(partyJoinCode);
     if (!isValidRoomCode(cleanCode)) {
       setPartyJoinError('Please enter a valid room code like NEST-7K4M2Q.');
@@ -611,11 +676,21 @@ export default function App() {
         <TopBar
           searchQuery={searchQuery}
           searching={searching}
+          userProfile={userProfile}
+          usernameLoading={usernameLoading}
           onSearchSubmit={handleSearchSubmit}
           onClearSearch={handleClearSearch}
           onCreateRoom={() => openCreateRoom()}
           onJoinRoom={openJoinRoom}
           onHomeClick={handleGoHome}
+          onOpenClaimUsername={() => {
+            setUsernameModalDismissible(true);
+            setUsernameModalMode('claim');
+          }}
+          onOpenChangeUsername={() => {
+            setUsernameModalDismissible(true);
+            setUsernameModalMode('change');
+          }}
         />
 
         <main className="flex-1">
@@ -693,9 +768,14 @@ export default function App() {
           ) : activeRoom ? (
             <RoomPage
               room={activeRoom}
+              username={userProfile?.username ?? ''}
               sharedLibrary={sharedLibrary}
               onBack={handleGoHome}
               onShare={setShareTarget}
+              onRequestUsername={() => {
+                setUsernameModalDismissible(true);
+                setUsernameModalMode('claim');
+              }}
             />
           ) : watchingVideo ? (
             <VideoPlayerPage
@@ -1092,6 +1172,33 @@ export default function App() {
       />
 
       <ShareSheet target={shareTarget} onClose={() => setShareTarget(null)} />
+
+      <UsernameModal
+        mode={usernameModalMode}
+        currentUsername={userProfile?.username ?? null}
+        dismissible={usernameModalDismissible}
+        onClose={() => {
+          pendingActionAfterUsernameRef.current = null;
+          setUsernameModalMode(null);
+        }}
+        onSuccess={(profile) => {
+          userProfileRef.current = profile;
+          setUserProfile(profile);
+          setUsernameModalMode(null);
+
+          const pendingRoom = pendingRoomAfterUsernameRef.current;
+          pendingRoomAfterUsernameRef.current = null;
+          if (pendingRoom) {
+            handleEnterRoom(pendingRoom);
+          }
+
+          const pendingAction = pendingActionAfterUsernameRef.current;
+          pendingActionAfterUsernameRef.current = null;
+          if (pendingAction) {
+            pendingAction();
+          }
+        }}
+      />
     </div>
   );
 }
