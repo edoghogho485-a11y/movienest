@@ -1,4 +1,4 @@
-// YouTube URL parsing, oEmbed metadata lookup, Data API v3 search + caching, and IFrame API loader
+// YouTube URL parsing, oEmbed metadata lookup, Data API v3 search + 72h cache, and IFrame API loader
 import { getSearchCache, upsertSearchCache } from './supabase';
 
 // Read API key from environment only (never hardcoded)
@@ -7,7 +7,8 @@ export const YOUTUBE_API_KEY =
 
 export const hasYouTubeApiKey = Boolean(YOUTUBE_API_KEY);
 
-const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+// 72-hour freshness window for Supabase search_cache
+const CACHE_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 
 export interface YouTubeSearchResult {
   videoId: string;
@@ -74,7 +75,6 @@ export function extractYouTubeId(rawInput: string): string | null {
   const input = rawInput.trim();
   if (!input) return null;
 
-  // Allow pasting a raw 11-character YouTube ID directly
   if (/^[a-zA-Z0-9_-]{11}$/.test(input)) {
     return input;
   }
@@ -84,7 +84,6 @@ export function extractYouTubeId(rawInput: string): string | null {
     const url = new URL(normalized);
     const host = url.hostname.replace(/^www\./i, '').toLowerCase();
 
-    // Format: youtu.be/VIDEO_ID
     if (host === 'youtu.be') {
       const id = url.pathname.split('/').filter(Boolean)[0];
       return id && /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
@@ -96,13 +95,11 @@ export function extractYouTubeId(rawInput: string): string | null {
       host === 'music.youtube.com' ||
       host === 'youtube-nocookie.com'
     ) {
-      // Format: youtube.com/watch?v=VIDEO_ID
       const vParam = url.searchParams.get('v');
       if (vParam && /^[a-zA-Z0-9_-]{11}$/.test(vParam)) {
         return vParam;
       }
 
-      // Formats: /shorts/VIDEO_ID, /embed/VIDEO_ID, /live/VIDEO_ID, /v/VIDEO_ID
       const parts = url.pathname.split('/').filter(Boolean);
       if (
         parts.length >= 2 &&
@@ -113,7 +110,6 @@ export function extractYouTubeId(rawInput: string): string | null {
       }
     }
   } catch {
-    // Fallback regex for partial or unusual URL strings
     const match = input.match(
       /(?:v=|youtu\.be\/|\/shorts\/|\/embed\/)([a-zA-Z0-9_-]{11})/
     );
@@ -145,7 +141,7 @@ export async function fetchYouTubeTitle(videoId: string): Promise<string> {
   }
 }
 
-// Search YouTube Data API v3 with 24-hour Supabase search_cache support
+// Search YouTube Data API v3 with 72-hour Supabase search_cache support
 export async function searchYouTubeWithCache(rawQuery: string): Promise<{
   results: YouTubeSearchResult[];
   fromCache: boolean;
@@ -158,7 +154,7 @@ export async function searchYouTubeWithCache(rawQuery: string): Promise<{
 
   const cacheKey = cleanQuery.toLowerCase();
 
-  // 1. Check Supabase search_cache first
+  // 1. Check Supabase search_cache first (72-hour freshness window)
   const cached = await getSearchCache<YouTubeSearchResult>(cacheKey);
   const cachedAgeMs = cached ? Date.now() - Date.parse(cached.fetched_at) : Infinity;
 
@@ -171,7 +167,7 @@ export async function searchYouTubeWithCache(rawQuery: string): Promise<{
     return { results: cached.results, fromCache: true, error: false };
   }
 
-  // 2. If no API key is configured, fall back to any cached results or empty
+  // 2. If no API key is configured, return any cached results if present
   if (!YOUTUBE_API_KEY) {
     if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
       return { results: cached.results, fromCache: true, error: false };
@@ -196,7 +192,7 @@ export async function searchYouTubeWithCache(rawQuery: string): Promise<{
     );
 
     if (!response.ok) {
-      // Quota exceeded (403/429) or API failure: fall back to stale cache if available
+      // Quota exceeded or API error: fall back to stale cache if available
       if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
         return { results: cached.results, fromCache: true, error: false };
       }
@@ -225,10 +221,7 @@ export async function searchYouTubeWithCache(rawQuery: string): Promise<{
           videoId,
           title: decodeHtmlEntities(item.snippet?.title ?? `YouTube Video (${videoId})`),
           channelTitle: decodeHtmlEntities(item.snippet?.channelTitle ?? 'YouTube'),
-          thumbnail:
-            item.snippet?.thumbnails?.high?.url ||
-            item.snippet?.thumbnails?.medium?.url ||
-            getYouTubeThumbnail(videoId),
+          thumbnail: getYouTubeThumbnail(videoId),
         };
       });
 

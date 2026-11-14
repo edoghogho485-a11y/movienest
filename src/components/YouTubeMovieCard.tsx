@@ -62,14 +62,14 @@ export function YouTubeMovieCard({
 
   return (
     <article
-      className={`flex flex-col rounded-xl border border-white/10 bg-[#0D121F] p-2.5 transition-colors hover:border-white/20 ${className}`}
+      className={`flex flex-col rounded-xl border border-white/10 bg-[#111116] p-2.5 transition-all hover:border-[#E50914]/45 hover:shadow-[0_0_24px_rgba(229,9,20,0.14)] ${className}`}
     >
       <button
         type="button"
         onClick={() => onWatch(video)}
-        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded-lg cursor-pointer"
+        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] rounded-lg cursor-pointer"
       >
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#111625]">
+        <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#181820]">
           {!imgError ? (
             <img
               src={video.thumbnail}
@@ -79,30 +79,30 @@ export function YouTubeMovieCard({
               className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
             />
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-[#0F172A] via-[#111625] to-[#1C1917] p-3">
-              <Film className="h-6 w-6 text-amber-400/80" aria-hidden="true" />
-              <span className="text-xs text-slate-300 text-center line-clamp-1">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-[#1C0B0E] via-[#111116] to-[#08080A] p-3">
+              <Film className="h-6 w-6 text-[#E50914]/85" aria-hidden="true" />
+              <span className="text-xs text-zinc-200 text-center line-clamp-1">
                 {video.title}
               </span>
             </div>
           )}
           <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent"
             aria-hidden="true"
           />
         </div>
 
-        <h3 className="mt-2.5 font-display text-sm font-semibold text-slate-100 line-clamp-2 leading-snug group-hover:text-amber-300 transition-colors">
+        <h3 className="mt-2.5 font-display text-sm font-semibold text-white line-clamp-2 leading-snug group-hover:text-[#E50914] transition-colors">
           {video.title}
         </h3>
-        <p className="mt-1 text-xs text-slate-400 truncate">{video.channelTitle}</p>
+        <p className="mt-1 text-xs text-zinc-400 truncate">{video.channelTitle}</p>
       </button>
 
-      <div className="mt-auto pt-3 flex items-center gap-2">
+      <div className="mt-auto pt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => onCreateRoom(video)}
-          className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-950 whitespace-nowrap transition-colors hover:bg-amber-400 cursor-pointer"
+          className="inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-2.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] cursor-pointer"
         >
           <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>Create Room</span>
@@ -114,16 +114,16 @@ export function YouTubeMovieCard({
             setPickingCategory((prev) => !prev);
             setStatusMsg(null);
           }}
-          className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-[#111625] px-3 py-1.5 text-xs font-medium text-slate-200 whitespace-nowrap transition-colors hover:border-white/30 cursor-pointer"
+          className="inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-[#181820] px-2.5 py-1.5 text-xs font-medium text-zinc-200 whitespace-nowrap transition-colors hover:border-white/30 cursor-pointer"
         >
-          <BookmarkPlus className="h-3.5 w-3.5 text-amber-400 shrink-0" aria-hidden="true" />
-          <span>Save to Library</span>
+          <BookmarkPlus className="h-3.5 w-3.5 text-[#E50914] shrink-0" aria-hidden="true" />
+          <span>Save</span>
         </button>
       </div>
 
       {pickingCategory && (
         <div className="mt-2.5 border-t border-white/10 pt-2.5">
-          <p className="text-[11px] text-slate-400">Save under:</p>
+          <p className="text-[11px] text-zinc-400">Save to Library:</p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {SHARED_LIBRARY_CATEGORIES.map((category) => (
               <button
@@ -133,8 +133,8 @@ export function YouTubeMovieCard({
                 onClick={() => void handleSaveCategory(category)}
                 className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
                   category === defaultCategory
-                    ? 'border border-amber-400/50 bg-[#161D30] text-amber-300 hover:bg-amber-500 hover:text-slate-950'
-                    : 'border border-white/15 bg-[#07090F] text-slate-300 hover:border-white/30'
+                    ? 'border border-[#E50914]/50 bg-[#1B1013] text-white hover:bg-[#E50914]'
+                    : 'border border-white/15 bg-[#08080A] text-zinc-300 hover:border-white/30'
                 }`}
               >
                 {category}

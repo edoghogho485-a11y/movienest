@@ -141,25 +141,25 @@ export function PasteYouTubeBar({
     <div
       className={
         isHome
-          ? 'rounded-2xl border border-white/10 bg-[#0D121F] p-4 sm:p-6'
-          : 'rounded-xl border border-white/10 bg-[#111625] p-3.5'
+          ? 'rounded-2xl border border-white/10 bg-[#111116] p-4 sm:p-5'
+          : 'rounded-xl border border-white/10 bg-[#14141B] p-3.5'
       }
     >
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <label
           htmlFor={inputId}
-          className="font-display text-sm sm:text-base font-semibold text-slate-100"
+          className="font-display text-sm sm:text-base font-semibold text-white"
         >
           {isHome ? 'Paste any YouTube link' : 'Or paste any YouTube link'}
         </label>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-zinc-400">
           Supports watch, youtu.be, and Shorts links
         </span>
       </div>
 
       <div className="relative mt-2.5">
         <Link2
-          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-400"
+          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#E50914]"
           aria-hidden="true"
         />
         <input
@@ -168,14 +168,14 @@ export function PasteYouTubeBar({
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
           placeholder="https://www.youtube.com/watch?v=... or youtu.be/..."
-          className="w-full min-h-[44px] rounded-lg border border-white/15 bg-[#07090F] pl-10 pr-10 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+          className="w-full min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] pl-10 pr-10 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
         />
         {urlInput && (
           <button
             type="button"
             onClick={() => setUrlInput('')}
             aria-label="Clear YouTube link"
-            className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:text-slate-100 cursor-pointer"
+            className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-zinc-400 hover:text-white cursor-pointer"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -183,15 +183,15 @@ export function PasteYouTubeBar({
       </div>
 
       {hasInvalidText && (
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-zinc-400">
           Paste a full YouTube link (youtube.com/watch, youtu.be, or /shorts/).
         </p>
       )}
 
       {videoId && (
-        <div className="mt-4 rounded-xl border border-white/10 bg-[#111625] p-3.5 sm:p-4">
+        <div className="mt-4 rounded-xl border border-white/10 bg-[#181820] p-3.5 sm:p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <div className="relative aspect-video w-full sm:w-44 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#07090F]">
+            <div className="relative aspect-video w-full sm:w-44 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#08080A]">
               {!thumbError ? (
                 <img
                   src={thumbnailUrl}
@@ -201,17 +201,17 @@ export function PasteYouTubeBar({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center bg-[#0F172A]">
-                  <Film className="h-6 w-6 text-amber-400" aria-hidden="true" />
+                <div className="flex h-full w-full items-center justify-center bg-[#111116]">
+                  <Film className="h-6 w-6 text-[#E50914]" aria-hidden="true" />
                 </div>
               )}
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="font-display text-sm sm:text-base font-semibold text-slate-100 line-clamp-2">
+              <p className="font-display text-sm sm:text-base font-semibold text-white line-clamp-2">
                 {title}
               </p>
-              <p className="mt-1 font-mono text-xs text-slate-400">
+              <p className="mt-1 font-mono text-xs text-zinc-400">
                 ID: {videoId}
               </p>
 
@@ -225,7 +225,7 @@ export function PasteYouTubeBar({
                       thumbnail: thumbnailUrl,
                     })
                   }
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white whitespace-nowrap shadow-[0_0_20px_rgba(229,9,20,0.28)] transition-colors hover:bg-[#F40612] cursor-pointer"
                 >
                   <Users className="h-4 w-4" aria-hidden="true" />
                   <span>Create Room with this</span>
@@ -237,9 +237,9 @@ export function PasteYouTubeBar({
                     setShowCategoryPicker((prev) => !prev);
                     setSaveMessage(null);
                   }}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-white/15 bg-[#161D30] px-4 py-2 text-sm font-medium text-slate-100 transition-colors hover:border-white/30 cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-white/15 bg-[#111116] px-4 py-2 text-sm font-medium text-white whitespace-nowrap transition-colors hover:border-white/30 cursor-pointer"
                 >
-                  <BookmarkPlus className="h-4 w-4 text-amber-400" aria-hidden="true" />
+                  <BookmarkPlus className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
                   <span>Save to Library</span>
                 </button>
               </div>
@@ -248,7 +248,7 @@ export function PasteYouTubeBar({
 
           {showCategoryPicker && (
             <div className="mt-4 border-t border-white/10 pt-3.5">
-              <p className="text-xs font-medium text-slate-300">
+              <p className="text-xs font-medium text-zinc-300">
                 Choose a category to save this video:
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -263,8 +263,8 @@ export function PasteYouTubeBar({
                     }}
                     className={`min-h-[40px] rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
                       selectedCategory === category && saving
-                        ? 'bg-amber-500 text-slate-950 font-semibold'
-                        : 'border border-white/15 bg-[#07090F] text-slate-200 hover:border-amber-400/60 hover:text-amber-300'
+                        ? 'bg-[#E50914] text-white font-semibold'
+                        : 'border border-white/15 bg-[#08080A] text-zinc-200 hover:border-[#E50914]/60 hover:text-white'
                     }`}
                   >
                     {category}
@@ -272,7 +272,7 @@ export function PasteYouTubeBar({
                 ))}
               </div>
               {saving && (
-                <p className="mt-2 text-xs text-slate-400">Saving to shared library...</p>
+                <p className="mt-2 text-xs text-zinc-400">Saving to shared library...</p>
               )}
             </div>
           )}
@@ -281,10 +281,10 @@ export function PasteYouTubeBar({
             <p
               className={`mt-3 flex items-center gap-1.5 text-xs font-medium ${
                 saveMessage.tone === 'error'
-                  ? 'text-amber-400'
+                  ? 'text-[#F87171]'
                   : saveMessage.tone === 'success'
                     ? 'text-emerald-400'
-                    : 'text-slate-300'
+                    : 'text-zinc-300'
               }`}
               role="status"
             >
@@ -306,7 +306,7 @@ export function PasteYouTubeBar({
   return (
     <section
       aria-label="Paste a YouTube link"
-      className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8"
+      className="px-4 pt-5 pb-2 sm:px-6 lg:px-8"
     >
       {content}
     </section>

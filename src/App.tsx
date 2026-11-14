@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Navbar } from './components/Navbar';
-import { Hero } from './components/Hero';
-import { YouTubeSearchBar } from './components/YouTubeSearchBar';
-import { YouTubeBrowseRows } from './components/YouTubeBrowseRows';
+import { ArrowRight, Play, Users, X } from 'lucide-react';
+import { Sidebar, MobileBottomNav, NavSection } from './components/Sidebar';
+import { TopBar } from './components/TopBar';
+import { HeroBanner } from './components/HeroBanner';
+import { CategoryTiles } from './components/CategoryTiles';
+import { GenreRows } from './components/GenreRows';
+import { GenreGridView } from './components/GenreGridView';
 import { PasteYouTubeBar, PastedYouTubeVideo } from './components/PasteYouTubeBar';
-import { SharedLibraryRows } from './components/SharedLibraryRows';
 import { VideoPlayerPage, WatchableVideo } from './components/VideoPlayerPage';
 import { RoomPage } from './components/RoomPage';
 import { ModalMode, RoomModal, RoomVideoOption } from './components/RoomModal';
+import { YouTubeMovieCard } from './components/YouTubeMovieCard';
+import { GenreDefinition } from './data/genres';
 import { LIBRARY_VIDEOS, LibraryVideo } from './data/libraryVideos';
 import {
   fetchSharedLibrary,
@@ -17,7 +21,7 @@ import {
 } from './lib/supabase';
 import {
   getYouTubeThumbnail,
-  hasYouTubeApiKey,
+  searchYouTubeWithCache,
   YouTubeSearchResult,
 } from './lib/youtube';
 
@@ -25,7 +29,7 @@ const HOW_IT_WORKS = [
   {
     step: '01.',
     title: 'Open a private room',
-    description: 'Pick any video from your library or paste a YouTube link to launch a private room.',
+    description: 'Pick any movie or paste a YouTube link to launch your screening room.',
   },
   {
     step: '02.',
@@ -35,7 +39,7 @@ const HOW_IT_WORKS = [
   {
     step: '03.',
     title: 'Stay in sync',
-    description: 'Play, pause, and scrub together without counting down on a voice call.',
+    description: 'Play, pause, and scrub together with live chat built right beside the video.',
   },
 ];
 
@@ -45,6 +49,7 @@ function getRoomCodeFromUrl(): string | null {
 }
 
 export default function App() {
+  const [activeNav, setActiveNav] = useState<NavSection>('home');
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedVideo, setSelectedVideo] = useState<RoomVideoOption | null>(null);
   const [watchingVideo, setWatchingVideo] = useState<WatchableVideo | null>(null);
@@ -55,6 +60,19 @@ export default function App() {
   const [sharedLibrary, setSharedLibrary] = useState<SharedLibraryItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
 
+  // See-all genre grid view and jump-to-genre state
+  const [seeAllData, setSeeAllData] = useState<{
+    genre: GenreDefinition;
+    videos: YouTubeSearchResult[];
+  } | null>(null);
+  const [forceLoadSlug, setForceLoadSlug] = useState<string | null>(null);
+
+  // TopBar YouTube search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<YouTubeSearchResult[] | null>(null);
+  const [searchError, setSearchError] = useState(false);
+
   const loadRoomByCode = async (code: string) => {
     setRoomLoading(true);
     setRoomNotFoundCode(null);
@@ -64,6 +82,7 @@ export default function App() {
     if (room) {
       setActiveRoom(room);
       setWatchingVideo(null);
+      setSeeAllData(null);
     } else {
       setActiveRoom(null);
       setRoomNotFoundCode(code);
@@ -71,7 +90,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Load shared Supabase library
     fetchSharedLibrary().then(({ items }) => {
       setSharedLibrary(items);
       setLibraryLoading(false);
@@ -117,6 +135,16 @@ export default function App() {
       title: video.title,
       thumbnail: video.thumbnail,
       youtubeId: video.videoId,
+    });
+  };
+
+  const openCreateRoomFromSample = (video: LibraryVideo) => {
+    openCreateRoom({
+      id: video.id,
+      title: video.title,
+      duration: video.duration,
+      thumbnail: video.thumbnail,
+      youtubeId: video.youtubeId,
     });
   };
 
@@ -170,6 +198,7 @@ export default function App() {
   const handleEnterRoom = (room: RoomRecord) => {
     setModalMode(null);
     setWatchingVideo(null);
+    setSeeAllData(null);
     setRoomNotFoundCode(null);
     setActiveRoom(room);
 
@@ -179,19 +208,72 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleGoHome = () => {
+  const clearRoomAndSubpages = () => {
     setActiveRoom(null);
     setWatchingVideo(null);
+    setSeeAllData(null);
     setRoomNotFoundCode(null);
     setRoomLoading(false);
 
     if (window.location.search) {
       window.history.pushState({}, '', window.location.pathname);
     }
+  };
+
+  const handleGoHome = () => {
+    clearRoomAndSubpages();
+    setSearchQuery('');
+    setSearchResults(null);
+    setSearchError(false);
+    setActiveNav('home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleSelectNav = (nav: NavSection) => {
+    clearRoomAndSubpages();
+    setSearchQuery('');
+    setSearchResults(null);
+    setSearchError(false);
+    setActiveNav(nav);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSearchSubmit = async (query: string) => {
+    clearRoomAndSubpages();
+    setSearchQuery(query);
+    setSearching(true);
+    setSearchError(false);
+
+    const { results, error } = await searchYouTubeWithCache(query);
+    setSearching(false);
+    setSearchResults(results);
+    setSearchError(error && results.length === 0);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchResults(null);
+    setSearchError(false);
+  };
+
+  const handleJumpToGenre = (genre: GenreDefinition) => {
+    setSeeAllData(null);
+    setForceLoadSlug(genre.slug);
+    if (activeNav === 'watch-party') {
+      setActiveNav('movies');
+    }
+
+    window.setTimeout(() => {
+      const target = document.getElementById(`genre-${genre.slug}`);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 60);
+  };
+
   const focusPasteBar = () => {
+    handleClearSearch();
     const el = document.getElementById('home-paste-youtube-input');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -199,159 +281,283 @@ export default function App() {
     }
   };
 
+  const showBrowseContent =
+    !roomLoading && !roomNotFoundCode && !activeRoom && !watchingVideo && !seeAllData;
+
   return (
-    <div id="top" className="min-h-screen bg-[#07090F] text-slate-50 flex flex-col">
-      <Navbar
-        onCreateRoom={() => openCreateRoom()}
-        onJoinRoom={openJoinRoom}
-        onHomeClick={handleGoHome}
-      />
+    <div id="top" className="min-h-screen bg-[#08080A] text-white flex pb-14 lg:pb-0">
+      <Sidebar activeNav={activeNav} onSelectNav={handleSelectNav} />
 
-      <main className="flex-1">
-        {roomLoading ? (
-          <section className="mx-auto max-w-2xl px-4 py-20 text-center sm:px-6">
-            <p className="font-display text-lg font-semibold text-slate-100">
-              Loading screening room...
-            </p>
-            <p className="mt-2 text-sm text-slate-400">
-              Checking your room code with MovieNest.
-            </p>
-          </section>
-        ) : roomNotFoundCode ? (
-          <section className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
-            <div className="rounded-2xl border border-white/10 bg-[#111625] p-6 sm:p-8">
-              <h1 className="font-display text-2xl font-bold text-slate-50">
-                Room not found
-              </h1>
-              <p className="mt-2 text-sm text-slate-400">
-                We couldn&apos;t find a room with code{' '}
-                <span className="font-mono font-semibold text-amber-400">
-                  {roomNotFoundCode}
-                </span>
-                . It may have a typo or hasn&apos;t been created yet.
+      <div className="flex-1 min-w-0 flex flex-col">
+        <TopBar
+          searchQuery={searchQuery}
+          searching={searching}
+          onSearchSubmit={handleSearchSubmit}
+          onClearSearch={handleClearSearch}
+          onCreateRoom={() => openCreateRoom()}
+          onJoinRoom={openJoinRoom}
+          onHomeClick={handleGoHome}
+        />
+
+        <main className="flex-1">
+          {roomLoading ? (
+            <section className="mx-auto max-w-2xl px-4 py-20 text-center sm:px-6">
+              <p className="font-display text-lg font-semibold text-white">
+                Loading screening room...
               </p>
-              <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={handleGoHome}
-                  className="min-h-[44px] rounded-lg border border-white/15 bg-[#161D30] px-5 py-2.5 text-sm font-medium text-slate-100 transition-colors hover:border-white/30 cursor-pointer"
-                >
-                  Back to Home
-                </button>
-                <button
-                  type="button"
-                  onClick={openJoinRoom}
-                  className="min-h-[44px] rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 cursor-pointer"
-                >
-                  Try Another Code
-                </button>
-              </div>
-            </div>
-          </section>
-        ) : activeRoom ? (
-          <RoomPage
-            room={activeRoom}
-            sharedLibrary={sharedLibrary}
-            onBack={handleGoHome}
-          />
-        ) : watchingVideo ? (
-          <VideoPlayerPage
-            video={watchingVideo}
-            relatedVideos={LIBRARY_VIDEOS.filter((v) => v.youtubeId !== watchingVideo.youtubeId)}
-            onBack={() => setWatchingVideo(null)}
-            onCreateRoomWithVideo={(video) => openCreateRoom(video)}
-            onSelectSampleVideo={openSampleVideoPage}
-          />
-        ) : (
-          <>
-            <Hero onCreateRoom={() => openCreateRoom()} onJoinRoom={openJoinRoom} />
-
-            {/* Show YouTube Search Bar only when VITE_YOUTUBE_API_KEY is configured */}
-            {hasYouTubeApiKey && (
-              <div className="border-t border-white/10">
-                <YouTubeSearchBar
-                  onWatch={openSearchVideoPage}
-                  onCreateRoom={openCreateRoomFromSearch}
-                  onSavedToLibrary={handleSavedToLibrary}
-                  onFocusPasteBar={focusPasteBar}
-                />
-              </div>
-            )}
-
-            {/* Paste-a-Link bar on the home page (always visible) */}
-            <div className={hasYouTubeApiKey ? '' : 'border-t border-white/10'}>
-              <PasteYouTubeBar
-                variant="home"
-                inputId="home-paste-youtube-input"
-                onCreateRoomWithVideo={openCreateRoomFromPasted}
-                onSavedToLibrary={handleSavedToLibrary}
-              />
-            </div>
-
-            {/* Sideways-scrolling YouTube movie rows (hidden when API key is missing) */}
-            {hasYouTubeApiKey && (
-              <div className="border-t border-white/10">
-                <YouTubeBrowseRows
-                  onWatch={openSearchVideoPage}
-                  onCreateRoom={openCreateRoomFromSearch}
-                  onSavedToLibrary={handleSavedToLibrary}
-                  onFocusPasteBar={focusPasteBar}
-                />
-              </div>
-            )}
-
-            {/* Shared Library rows (when API key is present) + Sample Videos row */}
-            <div className="border-t border-white/10">
-              <SharedLibraryRows
-                libraryItems={sharedLibrary}
-                loading={libraryLoading}
-                sampleVideos={LIBRARY_VIDEOS}
-                showCategoryRows={hasYouTubeApiKey}
-                onWatchLibraryItem={openSharedLibraryVideoPage}
-                onWatchSampleVideo={openSampleVideoPage}
-                onFocusPasteBar={focusPasteBar}
-              />
-            </div>
-
-            <section
-              aria-labelledby="how-it-works-heading"
-              className="mx-auto max-w-6xl border-t border-white/10 px-4 py-12 sm:px-6 sm:py-14 lg:px-8"
-            >
-              <h2
-                id="how-it-works-heading"
-                className="font-display text-xl font-semibold tracking-tight text-slate-50 sm:text-2xl"
-              >
-                Simple private watch parties
-              </h2>
-
-              <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
-                {HOW_IT_WORKS.map((item) => (
-                  <div key={item.step} className="space-y-2">
-                    <p className="font-mono text-sm font-medium text-amber-400 tabular-nums">
-                      {item.step}
-                    </p>
-                    <h3 className="font-display text-base font-semibold text-slate-100">
-                      {item.title}
-                    </h3>
-                    <p className="text-sm leading-relaxed text-slate-400">{item.description}</p>
-                  </div>
-                ))}
+              <p className="mt-2 text-sm text-zinc-400">
+                Checking your room code with MovieNest.
+              </p>
+            </section>
+          ) : roomNotFoundCode ? (
+            <section className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
+              <div className="rounded-2xl border border-white/10 bg-[#111116] p-6 sm:p-8">
+                <h1 className="font-display text-2xl font-bold text-white">
+                  Room not found
+                </h1>
+                <p className="mt-2 text-sm text-zinc-400">
+                  We couldn&apos;t find a room with code{' '}
+                  <span className="font-mono font-semibold text-[#E50914]">
+                    {roomNotFoundCode}
+                  </span>
+                  . It may have a typo or hasn&apos;t been created yet.
+                </p>
+                <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleGoHome}
+                    className="min-h-[44px] rounded-lg border border-white/15 bg-[#181820] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 cursor-pointer"
+                  >
+                    Back to Home
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openJoinRoom}
+                    className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] cursor-pointer"
+                  >
+                    Try Another Code
+                  </button>
+                </div>
               </div>
             </section>
-          </>
-        )}
-      </main>
+          ) : activeRoom ? (
+            <RoomPage
+              room={activeRoom}
+              sharedLibrary={sharedLibrary}
+              onBack={handleGoHome}
+            />
+          ) : watchingVideo ? (
+            <VideoPlayerPage
+              video={watchingVideo}
+              relatedVideos={LIBRARY_VIDEOS.filter((v) => v.youtubeId !== watchingVideo.youtubeId)}
+              onBack={() => setWatchingVideo(null)}
+              onCreateRoomWithVideo={(video) => openCreateRoom(video)}
+              onSelectSampleVideo={openSampleVideoPage}
+            />
+          ) : seeAllData ? (
+            <GenreGridView
+              genre={seeAllData.genre}
+              videos={seeAllData.videos}
+              onBack={() => setSeeAllData(null)}
+              onWatch={openSearchVideoPage}
+              onCreateRoom={openCreateRoomFromSearch}
+              onSavedToLibrary={handleSavedToLibrary}
+            />
+          ) : null}
 
-      <footer className="border-t border-white/10">
-        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-4 py-8 text-sm text-slate-400 sm:flex-row sm:items-center sm:px-6 lg:px-8">
-          <p className="font-display font-semibold text-slate-200">
-            Movie<span className="text-amber-400">Nest</span>
-          </p>
-          <p className="text-xs text-slate-500">
-            Private screening rooms for friends · Built for phones and laptops
-          </p>
-        </div>
-      </footer>
+          {showBrowseContent && (
+            <>
+              {/* TopBar Search Results View */}
+              {searchQuery && (
+                <section
+                  aria-label="YouTube search results"
+                  className="px-4 py-6 sm:px-6 lg:px-8 border-b border-white/10"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display text-xl font-semibold text-white">
+                        Results for &ldquo;{searchQuery}&rdquo;
+                      </h2>
+                      {!searching && searchResults && (
+                        <p className="mt-0.5 text-xs text-zinc-400">
+                          {searchResults.length}{' '}
+                          {searchResults.length === 1 ? 'video' : 'videos'} found
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-white/15 bg-[#111116] px-3 py-1.5 text-xs font-medium text-zinc-200 hover:border-white/30 cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>Clear search</span>
+                    </button>
+                  </div>
+
+                  {searching ? (
+                    <div className="mt-5 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
+                      {[0, 1, 2, 3].map((slot) => (
+                        <div
+                          key={slot}
+                          className="rounded-xl border border-white/10 bg-[#111116] p-2.5 animate-pulse"
+                        >
+                          <div className="aspect-video w-full rounded-lg bg-[#1A1A22]" />
+                          <div className="mt-3 h-4 w-3/4 rounded bg-[#1A1A22]" />
+                          <div className="mt-2 h-3 w-1/2 rounded bg-[#1A1A22]" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : searchError ? (
+                    <div className="mt-5 rounded-xl border border-white/10 bg-[#111116] p-6 text-center">
+                      <p className="text-sm font-medium text-white">
+                        Search is resting, try again tomorrow, or paste a link
+                      </p>
+                      <button
+                        type="button"
+                        onClick={focusPasteBar}
+                        className="mt-3 inline-flex min-h-[40px] items-center justify-center rounded-lg bg-[#E50914] px-4 py-2 text-xs font-semibold text-white hover:bg-[#F40612] cursor-pointer"
+                      >
+                        Paste a YouTube link
+                      </button>
+                    </div>
+                  ) : searchResults && searchResults.length === 0 ? (
+                    <div className="mt-5 rounded-xl border border-white/10 bg-[#111116] p-6 text-center">
+                      <p className="text-sm text-zinc-300">
+                        No embeddable full-length movies matched &ldquo;{searchQuery}&rdquo;. Try
+                        another title or paste a YouTube link below.
+                      </p>
+                    </div>
+                  ) : searchResults ? (
+                    <div className="mt-5 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
+                      {searchResults.map((video) => (
+                        <YouTubeMovieCard
+                          key={video.videoId}
+                          video={video}
+                          onWatch={openSearchVideoPage}
+                          onCreateRoom={openCreateRoomFromSearch}
+                          onSavedToLibrary={handleSavedToLibrary}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              )}
+
+              {activeNav === 'watch-party' ? (
+                <section className="px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+                  <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#1B090C] via-[#111116] to-[#08080A] p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.55)]">
+                    <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                      Start a MovieNest Watch Party
+                    </h1>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-300">
+                      Create a room, share your 6-character code, and watch YouTube movies in sync
+                      with live chat on phones and laptops.
+                    </p>
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => openCreateRoom()}
+                        className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_24px_rgba(229,9,20,0.4)] transition-colors hover:bg-[#F40612] cursor-pointer"
+                      >
+                        <Play className="h-4 w-4 fill-current" aria-hidden="true" />
+                        <span>Create Room</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openJoinRoom}
+                        className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-[#181820] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 cursor-pointer"
+                      >
+                        <Users className="h-4 w-4" aria-hidden="true" />
+                        <span>Join with Room Code</span>
+                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <PasteYouTubeBar
+                    variant="modal"
+                    inputId="home-paste-youtube-input"
+                    onCreateRoomWithVideo={openCreateRoomFromPasted}
+                    onSavedToLibrary={handleSavedToLibrary}
+                  />
+
+                  <div className="grid grid-cols-1 gap-6 border-t border-white/10 pt-8 md:grid-cols-3">
+                    {HOW_IT_WORKS.map((item) => (
+                      <div key={item.step} className="space-y-1.5">
+                        <p className="font-mono text-sm font-medium text-[#E50914] tabular-nums">
+                          {item.step}
+                        </p>
+                        <h2 className="font-display text-base font-semibold text-white">
+                          {item.title}
+                        </h2>
+                        <p className="text-sm leading-relaxed text-zinc-400">{item.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : (
+                <>
+                  {activeNav === 'home' && (
+                    <>
+                      <HeroBanner onWatchTogether={(video) => openCreateRoom(video)} />
+                      <PasteYouTubeBar
+                        variant="home"
+                        inputId="home-paste-youtube-input"
+                        onCreateRoomWithVideo={openCreateRoomFromPasted}
+                        onSavedToLibrary={handleSavedToLibrary}
+                      />
+                    </>
+                  )}
+
+                  {activeNav === 'movies' && (
+                    <div className="px-4 pt-6 sm:px-6 lg:px-8">
+                      <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                        Movies
+                      </h1>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        Browse full movies by genre and launch a synced room in one click.
+                      </p>
+                    </div>
+                  )}
+
+                  <CategoryTiles onSelectGenre={handleJumpToGenre} />
+
+                  <GenreRows
+                    forceLoadSlug={forceLoadSlug}
+                    libraryItems={sharedLibrary}
+                    libraryLoading={libraryLoading}
+                    sampleVideos={LIBRARY_VIDEOS}
+                    onSeeAllGenre={(genre, videos) => {
+                      setSeeAllData({ genre, videos });
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    onWatchYouTube={openSearchVideoPage}
+                    onCreateRoomYouTube={openCreateRoomFromSearch}
+                    onSavedToLibrary={handleSavedToLibrary}
+                    onWatchLibraryItem={openSharedLibraryVideoPage}
+                    onWatchSampleVideo={openSampleVideoPage}
+                    onCreateRoomSample={openCreateRoomFromSample}
+                  />
+                </>
+              )}
+            </>
+          )}
+        </main>
+
+        <footer className="mt-10 border-t border-white/10">
+          <div className="flex flex-col items-start justify-between gap-3 px-4 py-6 text-sm text-zinc-400 sm:flex-row sm:items-center sm:px-6 lg:px-8">
+            <p className="font-display font-semibold text-white">
+              Movie<span className="text-[#E50914]">Nest</span>
+            </p>
+            <p className="text-xs text-zinc-500">
+              Private screening rooms for friends · Built for phones and laptops
+            </p>
+          </div>
+        </footer>
+      </div>
+
+      <MobileBottomNav activeNav={activeNav} onSelectNav={handleSelectNav} />
 
       <RoomModal
         mode={modalMode}

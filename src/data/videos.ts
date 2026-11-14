@@ -1,11 +1,4 @@
-import heroCinemaRoom from '../assets/images/hero_cinema_room_1794596451612.jpg';
-import midnightHarbor from '../assets/images/thumb_midnight_harbor_1794596451882.jpg';
-import solarDrift from '../assets/images/thumb_solar_drift_1794596452614.jpg';
-import kyotoRain from '../assets/images/thumb_kyoto_rain_1794596452645.jpg';
-import alpineAscent from '../assets/images/thumb_alpine_ascent_1794596453094.jpg';
-import vinylSessions from '../assets/images/thumb_vinyl_sessions_1794596453713.jpg';
-import oceanDepths from '../assets/images/thumb_ocean_depths_1794596453702.jpg';
-
+// Legacy featured video IDs kept so previously created rooms continue to resolve cleanly
 export interface VideoItem {
   id: string;
   title: string;
@@ -17,8 +10,6 @@ export interface VideoItem {
   description: string;
 }
 
-export const HERO_IMAGE = heroCinemaRoom;
-
 export const FEATURED_VIDEOS: VideoItem[] = [
   {
     id: 'midnight-harbor',
@@ -26,7 +17,7 @@ export const FEATURED_VIDEOS: VideoItem[] = [
     duration: '1:42:18',
     genre: 'Mystery',
     year: '2025',
-    thumbnail: midnightHarbor,
+    thumbnail: 'https://img.youtube.com/vi/TLkA0RELQ1g/hqdefault.jpg',
     youtubeId: 'TLkA0RELQ1g',
     description: 'A quiet dockside watchman uncovers a drifting vessel with its logbook still warm.',
   },
@@ -36,9 +27,9 @@ export const FEATURED_VIDEOS: VideoItem[] = [
     duration: '1:58:04',
     genre: 'Sci-Fi',
     year: '2026',
-    thumbnail: solarDrift,
+    thumbnail: 'https://img.youtube.com/vi/R6MlUcmOul8/hqdefault.jpg',
     youtubeId: 'R6MlUcmOul8',
-    description: 'Two surveyors cross an endless amber desert to restart a distant relay station.',
+    description: 'Two surveyors cross an endless desert to restart a distant relay station.',
   },
   {
     id: 'kyoto-rain',
@@ -46,7 +37,7 @@ export const FEATURED_VIDEOS: VideoItem[] = [
     duration: '24:35',
     genre: 'Short Film',
     year: '2025',
-    thumbnail: kyotoRain,
+    thumbnail: 'https://img.youtube.com/vi/WhWc3b3KhnY/hqdefault.jpg',
     youtubeId: 'WhWc3b3KhnY',
     description: 'Late-evening stories told by lantern light along a rain-soaked neighborhood alley.',
   },
@@ -56,7 +47,7 @@ export const FEATURED_VIDEOS: VideoItem[] = [
     duration: '52:10',
     genre: 'Documentary',
     year: '2024',
-    thumbnail: alpineAscent,
+    thumbnail: 'https://img.youtube.com/vi/eRsGyueVLvQ/hqdefault.jpg',
     youtubeId: 'eRsGyueVLvQ',
     description: 'Following high-altitude winter photographers waiting out a week-long storm.',
   },
@@ -66,7 +57,7 @@ export const FEATURED_VIDEOS: VideoItem[] = [
     duration: '38:45',
     genre: 'Music Doc',
     year: '2025',
-    thumbnail: vinylSessions,
+    thumbnail: 'https://img.youtube.com/vi/AeFwEnyMl8A/hqdefault.jpg',
     youtubeId: 'AeFwEnyMl8A',
     description: 'An intimate look inside an analog studio recording a full album before dawn.',
   },
@@ -76,7 +67,7 @@ export const FEATURED_VIDEOS: VideoItem[] = [
     duration: '1:14:50',
     genre: 'Nature',
     year: '2026',
-    thumbnail: oceanDepths,
+    thumbnail: 'https://img.youtube.com/vi/Y-rmzh0PI3c/hqdefault.jpg',
     youtubeId: 'Y-rmzh0PI3c',
     description: 'Deep-water researchers map glowing reefs three thousand meters below the surface.',
   },

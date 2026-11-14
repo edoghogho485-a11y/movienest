@@ -411,29 +411,29 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
   };
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
+    <section className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-slate-300 transition-colors hover:text-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>Back to MovieNest</span>
         </button>
 
         <div className="flex items-center gap-3">
-          <span className="font-mono text-sm font-semibold tracking-wider text-amber-400">
+          <span className="font-mono text-sm font-semibold tracking-wider text-[#E50914]">
             {room.code}
           </span>
           <button
             type="button"
             onClick={handleCopyInvite}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-white/15 bg-[#111625] px-3.5 py-2 text-sm font-medium text-slate-100 transition-colors hover:border-white/30 hover:bg-[#161D30] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-white/15 bg-[#111116] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:border-white/30 hover:bg-[#181820] cursor-pointer"
           >
             {copied ? (
               <>
-                <Check className="h-4 w-4 text-amber-400" aria-hidden="true" />
+                <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
                 <span>Link Copied</span>
               </>
             ) : (
@@ -448,11 +448,11 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-50 sm:text-3xl">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
             {room.name}
           </h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Now playing: <span className="text-slate-200">{displayVideoTitle}</span>
+          <p className="mt-1 text-sm text-zinc-400">
+            Now playing: <span className="text-zinc-200">{displayVideoTitle}</span>
             <span className="mx-2" aria-hidden="true">
               ·
             </span>
@@ -461,15 +461,15 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
         </div>
 
         {/* Live Realtime sync & room presence indicator */}
-        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-slate-300 pt-1">
+        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-zinc-300 pt-1">
           <span className="inline-flex items-center gap-1.5" aria-live="polite">
             <span
               className={`h-2 w-2 rounded-full ${
                 syncStatus === 'synced'
                   ? 'bg-emerald-400'
                   : syncStatus === 'reconnecting'
-                    ? 'bg-amber-400'
-                    : 'bg-slate-400'
+                    ? 'bg-[#E50914]'
+                    : 'bg-zinc-400'
               }`}
               aria-hidden="true"
             />
@@ -482,12 +482,12 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
             </span>
           </span>
 
-          <span className="text-slate-600" aria-hidden="true">
+          <span className="text-zinc-600" aria-hidden="true">
             ·
           </span>
 
           <span className="inline-flex items-center gap-1.5 tabular-nums">
-            <Users className="h-3.5 w-3.5 text-amber-400" aria-hidden="true" />
+            <Users className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
             <span>
               {peopleCount} {peopleCount === 1 ? 'person' : 'people'} in room
             </span>
@@ -499,17 +499,17 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-stretch">
         <div className="lg:col-span-8 flex flex-col">
           {/* Responsive 16:9 YouTube IFrame API mount or Embed Fallback */}
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0D121F] shadow-2xl">
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#111116] shadow-2xl">
             {embedBlocked ? (
               <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#111625]">
-                  <Lock className="h-5 w-5 text-amber-400" aria-hidden="true" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#181820]">
+                  <Lock className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
                 </div>
                 <div className="max-w-md space-y-1.5">
-                  <p className="font-display text-lg font-semibold text-slate-100">
+                  <p className="font-display text-lg font-semibold text-white">
                     This video&apos;s owner blocks embedding
                   </p>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-zinc-400">
                     YouTube doesn&apos;t allow this video to play inside external apps. You can
                     open it directly on YouTube instead.
                   </p>
@@ -518,7 +518,7 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
                   href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612]"
                 >
                   <span>Open on YouTube</span>
                   <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -531,13 +531,13 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
 
           {/* Mobile-friendly synced playback controls bar */}
           {!embedBlocked && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#111625] px-4 py-3">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#111116] px-4 py-3">
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handleTogglePlayPause}
                   disabled={!playerReady}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400 disabled:opacity-50 cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] disabled:opacity-50 cursor-pointer"
                 >
                   {roomState.isPlaying ? (
                     <>
@@ -552,7 +552,7 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
                   )}
                 </button>
 
-                <span className="font-mono text-xs text-slate-300 tabular-nums">
+                <span className="font-mono text-xs text-zinc-300 tabular-nums">
                   Room time: {formatSeconds(roomState.positionSeconds)}
                 </span>
               </div>
@@ -561,7 +561,7 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
                 type="button"
                 onClick={handleManualResync}
                 disabled={!playerReady}
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/15 bg-[#161D30] px-3.5 py-2 text-xs font-medium text-slate-200 transition-colors hover:border-white/30 disabled:opacity-50 cursor-pointer"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/15 bg-[#181820] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 disabled:opacity-50 cursor-pointer"
               >
                 <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Sync Player</span>

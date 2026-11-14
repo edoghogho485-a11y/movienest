@@ -8,7 +8,7 @@
 
 @layer base {
   html {
-    background-color: #07090f;
+    background-color: #08080a;
     color: #f8fafc;
     font-family: var(--font-sans);
     scroll-behavior: smooth;
@@ -16,7 +16,7 @@
   }
 
   body {
-    background-color: #07090f;
+    background-color: #08080a;
     color: #f8fafc;
     overflow-x: hidden;
   }

@@ -33,9 +33,9 @@ function RelatedVideoCard({
     <button
       type="button"
       onClick={() => onSelect(item)}
-      className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded-xl cursor-pointer"
+      className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] rounded-xl cursor-pointer"
     >
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-[#111625] transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:border-amber-400/50">
+      <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-[#111116] transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:border-[#E50914]/55">
         {!imgError ? (
           <img
             src={item.thumbnail}
@@ -45,9 +45,9 @@ function RelatedVideoCard({
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-[#0F172A] via-[#111625] to-[#1C1917] p-3">
-            <Film className="h-6 w-6 text-amber-400/80" aria-hidden="true" />
-            <span className="text-xs font-medium text-slate-300 text-center line-clamp-1">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-[#1C0B0E] via-[#111116] to-[#08080A] p-3">
+            <Film className="h-6 w-6 text-[#E50914]/85" aria-hidden="true" />
+            <span className="text-xs font-medium text-zinc-200 text-center line-clamp-1">
               {item.title}
             </span>
           </div>
@@ -56,14 +56,14 @@ function RelatedVideoCard({
           className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"
           aria-hidden="true"
         />
-        <span className="absolute right-2.5 bottom-2 font-mono text-xs font-medium text-slate-100 tabular-nums">
+        <span className="absolute right-2.5 bottom-2 font-mono text-xs font-medium text-white tabular-nums">
           {item.duration}
         </span>
       </div>
-      <p className="mt-2 font-display text-sm font-semibold text-slate-100 line-clamp-1 group-hover:text-amber-300">
+      <p className="mt-2 font-display text-sm font-semibold text-white line-clamp-1 group-hover:text-[#E50914]">
         {item.title}
       </p>
-      <p className="mt-0.5 text-xs text-slate-400">{item.category}</p>
+      <p className="mt-0.5 text-xs text-zinc-400">{item.category}</p>
     </button>
   );
 }
@@ -134,27 +134,27 @@ export function VideoPlayerPage({
   }, [video.youtubeId]);
 
   return (
-    <section className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10 lg:px-8">
+    <section className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-slate-300 transition-colors hover:text-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         <span>Back to MovieNest</span>
       </button>
 
-      <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-[#0D121F] shadow-2xl">
+      <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-[#111116] shadow-2xl">
         {embedBlocked ? (
           <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#111625]">
-              <Lock className="h-5 w-5 text-amber-400" aria-hidden="true" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#181820]">
+              <Lock className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
             </div>
             <div className="max-w-md space-y-1.5">
-              <p className="font-display text-lg font-semibold text-slate-100">
+              <p className="font-display text-lg font-semibold text-white">
                 This video&apos;s owner blocks embedding
               </p>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-zinc-400">
                 YouTube restricts playback of this video on external websites, so you can watch it
                 directly on YouTube instead.
               </p>
@@ -163,7 +163,7 @@ export function VideoPlayerPage({
               href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-amber-400"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612]"
             >
               <span>Open on YouTube</span>
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -176,10 +176,10 @@ export function VideoPlayerPage({
 
       <div className="mt-6 flex flex-col gap-5 border-b border-white/10 pb-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-50 sm:text-3xl">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
             {video.title}
           </h1>
-          <p className="mt-1.5 text-sm text-slate-400">
+          <p className="mt-1.5 text-sm text-zinc-400">
             <span>{video.category}</span>
             {video.duration && (
               <>
@@ -195,7 +195,7 @@ export function VideoPlayerPage({
         <button
           type="button"
           onClick={() => onCreateRoomWithVideo(video)}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-slate-950 whitespace-nowrap shrink-0 transition-colors duration-150 hover:bg-amber-400 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#07090F] cursor-pointer"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white whitespace-nowrap shrink-0 shadow-[0_0_24px_rgba(229,9,20,0.35)] transition-colors duration-150 hover:bg-[#F40612] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
         >
           <Users className="h-4 w-4" aria-hidden="true" />
           <span>Create Room with this video</span>
@@ -204,7 +204,7 @@ export function VideoPlayerPage({
 
       {relatedVideos.length > 0 && (
         <div className="mt-8">
-          <h2 className="font-display text-lg font-semibold text-slate-100">
+          <h2 className="font-display text-lg font-semibold text-white">
             Sample Videos
           </h2>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
