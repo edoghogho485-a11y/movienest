@@ -13,7 +13,7 @@ import { ModalMode, RoomModal, RoomVideoOption } from './components/RoomModal';
 import { WatchChoiceModal } from './components/WatchChoiceModal';
 import { ShareSheet } from './components/ShareSheet';
 import { YouTubeMovieCard } from './components/YouTubeMovieCard';
-import { LIBRARY_VIDEOS, LibraryVideo } from './data/libraryVideos';
+import { LIBRARY_VIDEOS } from './data/libraryVideos';
 import { FEATURED_VIDEOS } from './data/videos';
 import { ArchiveMovieItem, getArchiveThumbnail } from './lib/archive';
 import {
@@ -25,6 +25,7 @@ import {
 import {
   fetchSharedLibrary,
   findRoomByCode,
+  isRoomHost,
   isValidRoomCode,
   RoomRecord,
   SharedLibraryItem,
@@ -169,6 +170,7 @@ export default function App() {
   const [activeRoom, setActiveRoom] = useState<RoomRecord | null>(null);
   const [roomLoading, setRoomLoading] = useState<boolean>(() => Boolean(getRoomCodeFromUrl()));
   const [roomNotFoundCode, setRoomNotFoundCode] = useState<string | null>(null);
+  const [roomLockedCode, setRoomLockedCode] = useState<string | null>(null);
 
   const [sharedLibrary, setSharedLibrary] = useState<SharedLibraryItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
@@ -203,16 +205,23 @@ export default function App() {
     if (!isValidRoomCode(normalized)) {
       setRoomLoading(false);
       setActiveRoom(null);
+      setRoomLockedCode(null);
       setRoomNotFoundCode(normalized || 'INVALID');
       return;
     }
 
     setRoomLoading(true);
     setRoomNotFoundCode(null);
+    setRoomLockedCode(null);
     const { room } = await findRoomByCode(normalized);
     setRoomLoading(false);
 
     if (room) {
+      if (room.locked && !isRoomHost(room)) {
+        setActiveRoom(null);
+        setRoomLockedCode(normalized);
+        return;
+      }
       setActiveRoom(room);
       setWatchingVideo(null);
       setSeeAllData(null);
@@ -242,6 +251,7 @@ export default function App() {
       } else if (archiveId) {
         setActiveRoom(null);
         setRoomNotFoundCode(null);
+        setRoomLockedCode(null);
         setRoomLoading(false);
         setSeeAllData(null);
         setChoiceVideo(null);
@@ -249,6 +259,7 @@ export default function App() {
       } else if (watchId) {
         setActiveRoom(null);
         setRoomNotFoundCode(null);
+        setRoomLockedCode(null);
         setRoomLoading(false);
         setSeeAllData(null);
         setChoiceVideo(null);
@@ -258,6 +269,7 @@ export default function App() {
         setWatchingVideo(null);
         setChoiceVideo(null);
         setRoomNotFoundCode(null);
+        setRoomLockedCode(null);
         setRoomLoading(false);
       }
     };
@@ -328,16 +340,6 @@ export default function App() {
     });
   };
 
-  const openCreateRoomFromSample = (video: LibraryVideo) => {
-    openCreateRoom({
-      id: video.id,
-      title: video.title,
-      duration: video.duration,
-      thumbnail: video.thumbnail,
-      youtubeId: video.youtubeId,
-    });
-  };
-
   const openCreateRoomFromArchive = (movie: ArchiveMovieItem) => {
     openCreateRoom({
       id: movie.identifier,
@@ -360,6 +362,7 @@ export default function App() {
     setModalMode(null);
     setActiveRoom(null);
     setRoomNotFoundCode(null);
+    setRoomLockedCode(null);
     setSeeAllData(null);
     setWatchingVideo(video);
 
@@ -387,16 +390,6 @@ export default function App() {
       duration: option.duration,
       source: option.source,
       videoUrl: option.videoUrl,
-    });
-  };
-
-  const openChoiceForSample = (video: LibraryVideo) => {
-    setChoiceVideo({
-      id: video.id,
-      title: video.title,
-      duration: video.duration,
-      thumbnail: video.thumbnail,
-      youtubeId: video.youtubeId,
     });
   };
 
@@ -437,11 +430,19 @@ export default function App() {
   };
 
   const handleEnterRoom = (room: RoomRecord) => {
+    if (room.locked && !isRoomHost(room)) {
+      setModalMode(null);
+      setActiveRoom(null);
+      setRoomLockedCode(room.code);
+      return;
+    }
+
     setModalMode(null);
     setChoiceVideo(null);
     setWatchingVideo(null);
     setSeeAllData(null);
     setRoomNotFoundCode(null);
+    setRoomLockedCode(null);
     setActiveRoom(room);
 
     const url = new URL(window.location.href);
@@ -482,6 +483,7 @@ export default function App() {
     setShareTarget(null);
     setSeeAllData(null);
     setRoomNotFoundCode(null);
+    setRoomLockedCode(null);
     setRoomLoading(false);
 
     if (window.location.search) {
@@ -575,6 +577,11 @@ export default function App() {
       return;
     }
 
+    if (room.locked && !isRoomHost(room)) {
+      setPartyJoinError('This room is locked.');
+      return;
+    }
+
     setPartyJoinCode('');
     handleEnterRoom(room);
   };
@@ -589,7 +596,12 @@ export default function App() {
   };
 
   const showBrowseContent =
-    !roomLoading && !roomNotFoundCode && !activeRoom && !watchingVideo && !seeAllData;
+    !roomLoading &&
+    !roomNotFoundCode &&
+    !roomLockedCode &&
+    !activeRoom &&
+    !watchingVideo &&
+    !seeAllData;
 
   return (
     <div id="top" className="min-h-screen bg-[#08080A] text-white flex pb-14 lg:pb-0">
@@ -628,6 +640,37 @@ export default function App() {
                     {roomNotFoundCode}
                   </span>
                   . It may have a typo or hasn&apos;t been created yet.
+                </p>
+                <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleGoHome}
+                    className="min-h-[44px] rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                  >
+                    Back to Home
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openJoinRoom}
+                    className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                  >
+                    Try Another Code
+                  </button>
+                </div>
+              </div>
+            </section>
+          ) : roomLockedCode ? (
+            <section className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
+              <div className="rounded-2xl border border-[#2a2a33] bg-[#14141a] p-6 sm:p-8">
+                <h1 className="font-display text-2xl font-bold text-white">
+                  This room is locked
+                </h1>
+                <p className="mt-2 text-sm text-zinc-400">
+                  The host has locked room{' '}
+                  <span className="font-mono font-semibold text-[#E50914]">
+                    {roomLockedCode}
+                  </span>{' '}
+                  so new guests cannot join right now.
                 </p>
                 <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
                   <button
@@ -973,7 +1016,6 @@ export default function App() {
                     forceLoadSlug={forceLoadSlug}
                     libraryItems={sharedLibrary}
                     libraryLoading={libraryLoading}
-                    sampleVideos={LIBRARY_VIDEOS}
                     onSeeAllGenre={(genre, videos) => {
                       setSeeAllData({ kind: 'youtube', genre, videos });
                       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -991,19 +1033,6 @@ export default function App() {
                     onSavedToLibrary={handleSavedToLibrary}
                     onWatchLibraryItem={openChoiceForSharedLibrary}
                     onShareLibraryItem={(item) => openShareForVideo(item.video_id, item.title)}
-                    onWatchSampleVideo={openChoiceForSample}
-                    onWatchAloneSample={(sample) =>
-                      enterWatchAlone({
-                        id: sample.id,
-                        title: sample.title,
-                        category: sample.category,
-                        youtubeId: sample.youtubeId,
-                        thumbnail: sample.thumbnail,
-                        duration: sample.duration,
-                      })
-                    }
-                    onCreateRoomSample={openCreateRoomFromSample}
-                    onShareSample={(sample) => openShareForVideo(sample.youtubeId, sample.title)}
                   />
                 </>
               )}

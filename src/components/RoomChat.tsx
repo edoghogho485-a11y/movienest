@@ -9,11 +9,14 @@ import {
   supabase,
 } from '../lib/supabase';
 
-const DISPLAY_NAME_STORAGE_KEY = 'movienest_display_name';
+export const DISPLAY_NAME_STORAGE_KEY = 'movienest_display_name';
 const CHAT_COOLDOWN_MS = 1000;
 
 interface RoomChatProps {
   roomCode: string;
+  displayName?: string;
+  onDisplayNameChange?: (name: string) => void;
+  inMobileTab?: boolean;
 }
 
 function formatMessageTime(isoDate: string): string {
@@ -22,9 +25,14 @@ function formatMessageTime(isoDate: string): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function RoomChat({ roomCode }: RoomChatProps) {
+export function RoomChat({
+  roomCode,
+  displayName: controlledDisplayName,
+  onDisplayNameChange,
+  inMobileTab = false,
+}: RoomChatProps) {
   // Remember the viewer's display name on this device (capped at 30 chars)
-  const [displayName, setDisplayName] = useState<string>(() => {
+  const [internalDisplayName, setInternalDisplayName] = useState<string>(() => {
     try {
       return (
         localStorage
@@ -36,6 +44,8 @@ export function RoomChat({ roomCode }: RoomChatProps) {
       return '';
     }
   });
+  const displayName =
+    controlledDisplayName !== undefined ? controlledDisplayName : internalDisplayName;
   const [nameInput, setNameInput] = useState('');
 
   const [messages, setMessages] = useState<RoomMessage[]>([]);
@@ -120,7 +130,11 @@ export function RoomChat({ roomCode }: RoomChatProps) {
     } catch {
       // Ignore storage quota errors
     }
-    setDisplayName(cleaned);
+    if (onDisplayNameChange) {
+      onDisplayNameChange(cleaned);
+    } else {
+      setInternalDisplayName(cleaned);
+    }
     setNameInput('');
   };
 
@@ -165,7 +179,9 @@ export function RoomChat({ roomCode }: RoomChatProps) {
   return (
     <aside
       aria-label="Room chat"
-      className="flex h-[380px] lg:h-full lg:min-h-[460px] lg:max-h-[560px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111116]"
+      className={`flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111116] ${
+        inMobileTab ? 'h-[380px]' : 'h-[380px] lg:h-[460px]'
+      }`}
     >
       <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
         <h2 className="font-display text-sm font-semibold text-white">

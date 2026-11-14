@@ -20,6 +20,21 @@ export function isValidRoomCode(rawCode: string): boolean {
   return ROOM_CODE_PATTERN.test(rawCode.trim().toUpperCase());
 }
 
+export type RoomControlsMode = 'everyone' | 'host';
+
+export const QUEUE_MAX_ITEMS = 20;
+const HOST_ID_STORAGE_KEY = 'movienest_host_id';
+
+export interface QueueItem {
+  id: string;
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  source: 'youtube' | 'archive';
+  videoUrl?: string | null;
+  addedBy?: string;
+}
+
 // Matches the "rooms" table schema in Supabase
 export interface RoomRecord {
   id: string;
@@ -30,8 +45,56 @@ export interface RoomRecord {
   video_url?: string | null;
   is_playing: boolean;
   position_seconds: number;
+  host_id?: string | null;
+  controls?: RoomControlsMode | string | null;
+  locked?: boolean | null;
+  queue?: QueueItem[] | null;
   updated_at: string;
   created_at: string;
+}
+
+// Get or create a persistent random host ID stored on this device
+export function getOrCreateDeviceHostId(): string {
+  try {
+    const existing = localStorage.getItem(HOST_ID_STORAGE_KEY)?.trim();
+    if (existing) return existing;
+
+    const generated =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(HOST_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return `host-${Math.random().toString(36).slice(2, 12)}`;
+  }
+}
+
+export function isRoomHost(room: Pick<RoomRecord, 'host_id'> | null | undefined): boolean {
+  if (!room?.host_id) return false;
+  try {
+    const localHostId = localStorage.getItem(HOST_ID_STORAGE_KEY)?.trim();
+    return Boolean(localHostId && localHostId === room.host_id);
+  } catch {
+    return false;
+  }
+}
+
+// Normalize queue array from Supabase jsonb column (caps at 20 items)
+export function normalizeQueueItems(rawQueue: unknown): QueueItem[] {
+  if (!Array.isArray(rawQueue)) return [];
+  return rawQueue
+    .filter((item): item is QueueItem => {
+      if (!item || typeof item !== 'object') return false;
+      const candidate = item as Partial<QueueItem>;
+      return (
+        typeof candidate.id === 'string' &&
+        typeof candidate.videoId === 'string' &&
+        typeof candidate.title === 'string' &&
+        (candidate.source === 'youtube' || candidate.source === 'archive')
+      );
+    })
+    .slice(0, QUEUE_MAX_ITEMS);
 }
 
 // Easy-to-read alphabet: excludes ambiguous 0, O, 1, I, L
@@ -116,6 +179,8 @@ export async function createRoomInSupabase(params: {
       continue;
     }
 
+    const hostId = getOrCreateDeviceHostId();
+
     const { data, error } = await supabase
       .from('rooms')
       .insert({
@@ -126,6 +191,10 @@ export async function createRoomInSupabase(params: {
         video_url: videoSource === 'archive' ? params.videoUrl ?? null : null,
         is_playing: false,
         position_seconds: startSeconds,
+        host_id: hostId,
+        controls: 'everyone',
+        locked: false,
+        queue: [],
       })
       .select()
       .single();
@@ -192,6 +261,83 @@ export async function updateRoomPlayback(params: {
 
   return {
     error: error ? 'Could not sync playback right now.' : null,
+  };
+}
+
+// Host-only: save room control permissions and lock state
+export async function updateRoomSettings(params: {
+  roomId: string;
+  controls: RoomControlsMode;
+  locked: boolean;
+}): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('rooms')
+    .update({
+      controls: params.controls,
+      locked: params.locked,
+    })
+    .eq('id', params.roomId);
+
+  return {
+    error: error ? 'Could not update room settings right now.' : null,
+  };
+}
+
+// Switch the active movie in the room (optionally updating the queue at the same time)
+export async function updateRoomVideo(params: {
+  roomId: string;
+  videoId: string;
+  source: 'youtube' | 'archive';
+  videoUrl?: string | null;
+  isPlaying?: boolean;
+  positionSeconds?: number;
+  queue?: QueueItem[];
+  updatedAt?: string;
+}): Promise<{ error: string | null }> {
+  if (
+    params.source === 'archive' &&
+    (!params.videoUrl || !params.videoUrl.startsWith('https://archive.org/download/'))
+  ) {
+    return { error: 'This Archive movie link cannot be played.' };
+  }
+
+  const payload: Record<string, unknown> = {
+    video_id: params.videoId.trim(),
+    source: params.source,
+    video_url: params.source === 'archive' ? params.videoUrl ?? null : null,
+    is_playing: params.isPlaying ?? false,
+    position_seconds: Math.max(0, Math.floor(params.positionSeconds ?? 0)),
+    updated_at: params.updatedAt ?? new Date().toISOString(),
+  };
+
+  if (params.queue) {
+    payload.queue = params.queue.slice(0, QUEUE_MAX_ITEMS);
+  }
+
+  const { error } = await supabase
+    .from('rooms')
+    .update(payload)
+    .eq('id', params.roomId);
+
+  return {
+    error: error ? 'Could not switch the room video right now.' : null,
+  };
+}
+
+// Save updated Up Next queue array (capped at 20 items)
+export async function updateRoomQueue(params: {
+  roomId: string;
+  queue: QueueItem[];
+}): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('rooms')
+    .update({
+      queue: params.queue.slice(0, QUEUE_MAX_ITEMS),
+    })
+    .eq('id', params.roomId);
+
+  return {
+    error: error ? 'Could not update the queue right now.' : null,
   };
 }
 

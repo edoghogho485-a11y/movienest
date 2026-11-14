@@ -8,6 +8,7 @@ import {
   createRoomInSupabase,
   findRoomByCode,
   getInviteLink,
+  isRoomHost,
   isValidRoomCode,
   ROOM_NAME_MAX_LENGTH,
   RoomRecord,
@@ -234,6 +235,11 @@ export function RoomModal({
       return;
     }
 
+    if (room.locked && !isRoomHost(room)) {
+      setErrorMsg('This room is locked.');
+      return;
+    }
+
     onOpenRoom(room);
   };
 
@@ -421,17 +427,17 @@ export function RoomModal({
                       ))}
                     </optgroup>
                   )}
-                  <optgroup label="Sample Videos (Free Open Movies)">
+                  <optgroup label="Open Movies">
                     {LIBRARY_VIDEOS.map((video) => (
                       <option key={video.id} value={video.youtubeId}>
-                        {video.title} ({video.duration})
+                        {video.title} ({video.category})
                       </option>
                     ))}
                   </optgroup>
                   <optgroup label="Featured Picks">
                     {FEATURED_VIDEOS.map((video) => (
                       <option key={video.id} value={video.youtubeId}>
-                        {video.title} ({video.duration})
+                        {video.title} ({video.genre})
                       </option>
                     ))}
                   </optgroup>
