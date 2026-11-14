@@ -3,6 +3,12 @@ import { ChevronRight, Film, Play, Share2, Users } from 'lucide-react';
 import { GENRE_LIST, GenreDefinition } from '../data/genres';
 import { LibraryVideo } from '../data/libraryVideos';
 import {
+  ARCHIVE_GENRE_LIST,
+  ArchiveGenreDefinition,
+  ArchiveMovieItem,
+  searchArchiveWithCache,
+} from '../lib/archive';
+import {
   SHARED_LIBRARY_CATEGORIES,
   SharedLibraryItem,
 } from '../lib/supabase';
@@ -11,6 +17,7 @@ import {
   searchYouTubeWithCache,
   YouTubeSearchResult,
 } from '../lib/youtube';
+import { ArchiveMovieCard } from './ArchiveMovieCard';
 import { YouTubeMovieCard } from './YouTubeMovieCard';
 
 interface GenreRowsProps {
@@ -19,9 +26,16 @@ interface GenreRowsProps {
   libraryLoading: boolean;
   sampleVideos: LibraryVideo[];
   onSeeAllGenre: (genre: GenreDefinition, videos: YouTubeSearchResult[]) => void;
+  onSeeAllArchiveGenre: (
+    genre: ArchiveGenreDefinition,
+    movies: ArchiveMovieItem[]
+  ) => void;
   onWatchYouTube: (video: YouTubeSearchResult) => void;
   onCreateRoomYouTube: (video: YouTubeSearchResult) => void;
   onShareYouTube: (video: YouTubeSearchResult) => void;
+  onWatchArchive: (movie: ArchiveMovieItem) => void;
+  onCreateRoomArchive: (movie: ArchiveMovieItem) => void;
+  onShareArchive: (movie: ArchiveMovieItem) => void;
   onSavedToLibrary: (item: SharedLibraryItem) => void;
   onWatchLibraryItem: (item: SharedLibraryItem) => void;
   onShareLibraryItem: (item: SharedLibraryItem) => void;
@@ -149,6 +163,131 @@ function LazyGenreRow({
               onCreateRoom={onCreateRoom}
               onShare={onShare}
               onSavedToLibrary={onSavedToLibrary}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Single lazy-loaded Internet Archive genre row (no API key needed, cached 72h in search_cache)
+function LazyArchiveGenreRow({
+  genre,
+  forceLoad,
+  onSeeAll,
+  onWatch,
+  onCreateRoom,
+  onShare,
+}: {
+  genre: ArchiveGenreDefinition;
+  forceLoad: boolean;
+  onSeeAll: (genre: ArchiveGenreDefinition, movies: ArchiveMovieItem[]) => void;
+  onWatch: (movie: ArchiveMovieItem) => void;
+  onCreateRoom: (movie: ArchiveMovieItem) => void;
+  onShare: (movie: ArchiveMovieItem) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [shouldLoad, setShouldLoad] = useState(forceLoad);
+  const [loading, setLoading] = useState(false);
+  const [movies, setMovies] = useState<ArchiveMovieItem[] | null>(null);
+
+  useEffect(() => {
+    if (forceLoad) {
+      setShouldLoad(true);
+    }
+  }, [forceLoad]);
+
+  useEffect(() => {
+    if (shouldLoad) return;
+    const el = rowRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setShouldLoad(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '260px 0px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [shouldLoad]);
+
+  useEffect(() => {
+    if (!shouldLoad || movies !== null) return;
+
+    let cancelled = false;
+    setLoading(true);
+
+    searchArchiveWithCache(genre.query, genre.slug).then(({ results }) => {
+      if (cancelled) return;
+      setMovies(results);
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldLoad, movies, genre.query, genre.slug]);
+
+  if (movies !== null && movies.length === 0) {
+    return null;
+  }
+
+  return (
+    <div id={`genre-${genre.slug}`} ref={rowRef} className="scroll-mt-20">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2.5">
+          <h3 className="font-display text-lg font-semibold text-white">
+            {genre.name}
+          </h3>
+          <span className="rounded-md border border-[#2a2a33] bg-[#14141a] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-300">
+            Archive
+          </span>
+        </div>
+
+        {movies && movies.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onSeeAll(genre, movies)}
+            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 text-xs font-semibold text-zinc-300 transition-colors hover:text-[#E50914] active:bg-[#20202a] cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <span>See all</span>
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+
+      {!shouldLoad || loading || movies === null ? (
+        <div className="mt-3 flex gap-4 overflow-hidden">
+          {[0, 1, 2, 3].map((slot) => (
+            <div
+              key={slot}
+              className="w-[240px] sm:w-[270px] shrink-0 rounded-xl border border-white/10 bg-[#111116] p-2.5 animate-pulse"
+            >
+              <div className="aspect-video w-full rounded-lg bg-[#1A1A22]" />
+              <div className="mt-3 h-4 w-3/4 rounded bg-[#1A1A22]" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-[#1A1A22]" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 flex gap-4 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+          {movies.map((movie) => (
+            <ArchiveMovieCard
+              key={`${genre.slug}-${movie.identifier}`}
+              movie={movie}
+              className="w-[240px] sm:w-[270px] shrink-0 snap-start"
+              onWatch={onWatch}
+              onCreateRoom={onCreateRoom}
+              onShare={onShare}
             />
           ))}
         </div>
@@ -308,9 +447,13 @@ export function GenreRows({
   libraryLoading,
   sampleVideos,
   onSeeAllGenre,
+  onSeeAllArchiveGenre,
   onWatchYouTube,
   onCreateRoomYouTube,
   onShareYouTube,
+  onWatchArchive,
+  onCreateRoomArchive,
+  onShareArchive,
   onSavedToLibrary,
   onWatchLibraryItem,
   onShareLibraryItem,
@@ -319,7 +462,6 @@ export function GenreRows({
   onCreateRoomSample,
   onShareSample,
 }: GenreRowsProps) {
-  // Only render Shared Library rows for categories that actually contain saved videos
   const nonEmptyLibraryCategories = SHARED_LIBRARY_CATEGORIES.map((category) => ({
     category,
     items: libraryItems.filter((item) => item.category === category),
@@ -330,7 +472,7 @@ export function GenreRows({
       aria-label="Browse movies by genre"
       className="space-y-8 px-4 py-4 sm:px-6 lg:px-8"
     >
-      {/* 18 lazy-loaded YouTube genre rows in requested order */}
+      {/* YouTube genre rows */}
       {GENRE_LIST.map((genre) => (
         <LazyGenreRow
           key={genre.slug}
@@ -344,7 +486,20 @@ export function GenreRows({
         />
       ))}
 
-      {/* Non-empty Shared Library rows only */}
+      {/* 5 Internet Archive Classic Movie rows (no API key needed) */}
+      {ARCHIVE_GENRE_LIST.map((genre) => (
+        <LazyArchiveGenreRow
+          key={genre.slug}
+          genre={genre}
+          forceLoad={forceLoadSlug === genre.slug}
+          onSeeAll={onSeeAllArchiveGenre}
+          onWatch={onWatchArchive}
+          onCreateRoom={onCreateRoomArchive}
+          onShare={onShareArchive}
+        />
+      ))}
+
+      {/* Non-empty Shared Library rows */}
       {!libraryLoading &&
         nonEmptyLibraryCategories.map((group) => (
           <div key={group.category}>

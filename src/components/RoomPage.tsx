@@ -4,6 +4,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  Film,
   Lock,
   Pause,
   Play,
@@ -11,8 +12,10 @@ import {
   Share2,
   Users,
 } from 'lucide-react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
+import { fetchArchiveMovieDetails } from '../lib/archive';
 import { copyTextToClipboard, ShareTarget } from '../lib/share';
 import {
   findRoomByCode,
@@ -28,6 +31,15 @@ import {
   YTPlayer,
 } from '../lib/youtube';
 import { RoomChat } from './RoomChat';
+
+const REACTION_EMOJIS = ['❤️', '😂', '😭', '😡', '😮', '🔥'] as const;
+const REACTION_COOLDOWN_MS = 1000;
+
+interface FloatingReaction {
+  id: string;
+  emoji: string;
+  leftPercent: number;
+}
 
 function resolveRoomVideo(videoId: string, sharedLibrary: SharedLibraryItem[]) {
   const fromShared = sharedLibrary.find((v) => v.video_id === videoId);
@@ -65,7 +77,7 @@ function resolveRoomVideo(videoId: string, sharedLibrary: SharedLibraryItem[]) {
   }
 
   return {
-    title: `YouTube Video (${videoId})`,
+    title: `Movie (${videoId})`,
     meta: 'Shared room playback',
     youtubeId: videoId || LIBRARY_VIDEOS[0].youtubeId,
     needsTitleLookup: true,
@@ -89,6 +101,8 @@ interface RoomPageProps {
 }
 
 export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps) {
+  const isArchive = room.source === 'archive';
+
   const [copied, setCopied] = useState(false);
   const [resyncing, setResyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'synced' | 'reconnecting'>('connecting');
@@ -100,14 +114,31 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     isPlaying: room.is_playing,
     positionSeconds: room.position_seconds,
   });
+
   const [playerReady, setPlayerReady] = useState(false);
   const [embedBlocked, setEmbedBlocked] = useState(false);
   const [resolvedTitle, setResolvedTitle] = useState<string | null>(null);
 
+  // Internet Archive MP4 state
+  const [archiveUrl, setArchiveUrl] = useState<string | null>(
+    isArchive ? room.video_url ?? null : null
+  );
+  const [archiveLoading, setArchiveLoading] = useState<boolean>(
+    isArchive && !room.video_url
+  );
+  const [archiveError, setArchiveError] = useState<boolean>(false);
+
+  // Floating reactions state (Broadcast over Supabase Realtime, max 1/sec per viewer)
+  const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
+  const [reactionCooldown, setReactionCooldown] = useState(false);
+
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
+  const htmlVideoRef = useRef<HTMLVideoElement | null>(null);
+  const roomChannelRef = useRef<RealtimeChannel | null>(null);
+  const lastReactionAtRef = useRef<number>(0);
 
-  // Latest room state ref so async YouTube callbacks always see current target state
+  // Latest room state ref so async player callbacks always see current target state
   const latestRoomStateRef = useRef(roomState);
   latestRoomStateRef.current = roomState;
 
@@ -118,7 +149,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
   const remoteResetTimerRef = useRef<number | null>(null);
   const recentSentTimestampsRef = useRef<Set<number>>(new Set());
 
-  // Track last observed playback position to detect timeline seeks (even while paused)
+  // Track last observed playback position to detect timeline seeks (YouTube)
   const lastTimeCheckRef = useRef<{ time: number; wallMs: number; wasPlaying: boolean }>({
     time: room.position_seconds,
     wallMs: Date.now(),
@@ -136,9 +167,51 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
   const displayVideoTitle = resolvedTitle ?? video.title;
   const inviteLink = getInviteLink(room.code);
 
-  // If the room uses a raw YouTube ID not yet in our loaded lists, fetch its title via oEmbed
+  // Spawn an emoji that floats up over the video and removes itself when finished
+  const spawnFloatingReaction = (id: string, emoji: string) => {
+    const leftPercent = 14 + Math.floor(Math.random() * 72);
+    setFloatingReactions((prev) => {
+      if (prev.some((item) => item.id === id)) return prev;
+      return [...prev.slice(-18), { id, emoji, leftPercent }];
+    });
+
+    window.setTimeout(() => {
+      setFloatingReactions((prev) => prev.filter((item) => item.id !== id));
+    }, 2300);
+  };
+
+  // Resolve title (and Archive MP4 URL if needed)
   useEffect(() => {
     setResolvedTitle(null);
+
+    if (isArchive) {
+      let cancelled = false;
+      setArchiveError(false);
+      if (room.video_url) {
+        setArchiveUrl(room.video_url);
+        setArchiveLoading(false);
+      } else {
+        setArchiveLoading(true);
+      }
+
+      fetchArchiveMovieDetails(room.video_id).then((details) => {
+        if (cancelled) return;
+        if (details.title) setResolvedTitle(details.title);
+        if (!room.video_url) {
+          setArchiveLoading(false);
+          if (details.mp4Url) {
+            setArchiveUrl(details.mp4Url);
+          } else {
+            setArchiveError(true);
+          }
+        }
+      });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (!video.needsTitleLookup) return;
 
     let cancelled = false;
@@ -149,7 +222,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     return () => {
       cancelled = true;
     };
-  }, [video.youtubeId, video.needsTitleLookup]);
+  }, [isArchive, room.video_id, room.video_url, video.youtubeId, video.needsTitleLookup]);
 
   // Push local play/pause/seek state to Supabase
   const pushLocalState = async (isPlaying: boolean, positionSeconds: number) => {
@@ -173,8 +246,36 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     });
   };
 
-  // Apply remote state from Supabase to the local YouTube player without triggering a loop
+  // Apply remote state from Supabase to whichever player is active (HTML5 Archive or YouTube)
   const applyRemoteStateToPlayer = (isPlaying: boolean, targetSeconds: number) => {
+    if (isArchive) {
+      const videoEl = htmlVideoRef.current;
+      if (!videoEl) return;
+
+      isApplyingRemoteRef.current = true;
+      if (remoteResetTimerRef.current) {
+        window.clearTimeout(remoteResetTimerRef.current);
+      }
+
+      // Only seek when the time differs by more than 2 seconds
+      if (Math.abs(videoEl.currentTime - targetSeconds) > 2) {
+        videoEl.currentTime = targetSeconds;
+      }
+
+      if (isPlaying && videoEl.paused) {
+        void videoEl.play().catch(() => {
+          // Browser autoplay policies may pause unmuted playback until user taps Play
+        });
+      } else if (!isPlaying && !videoEl.paused) {
+        videoEl.pause();
+      }
+
+      remoteResetTimerRef.current = window.setTimeout(() => {
+        isApplyingRemoteRef.current = false;
+      }, 900);
+      return;
+    }
+
     const player = playerRef.current;
     if (!player) return;
 
@@ -209,8 +310,10 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     }, 1200);
   };
 
-  // 1. Initialize the YouTube IFrame Player API instance
+  // 1. Initialize YouTube IFrame Player API when source is YouTube
   useEffect(() => {
+    if (isArchive) return;
+
     let cancelled = false;
     setPlayerReady(false);
     setEmbedBlocked(false);
@@ -218,7 +321,6 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     loadYouTubeIframeAPI().then((YT) => {
       if (cancelled || !playerMountRef.current) return;
 
-      // Clear any previous DOM node before mounting YT.Player
       playerMountRef.current.innerHTML = '';
       const playerDiv = document.createElement('div');
       playerDiv.className = 'h-full w-full';
@@ -230,7 +332,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
         videoId: video.youtubeId,
         host: 'https://www.youtube-nocookie.com',
         playerVars: {
-          playsinline: 1, // Keeps playback inline on iOS/Android phones
+          playsinline: 1,
           rel: 0,
           modestbranding: 1,
           enablejsapi: 1,
@@ -242,7 +344,6 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
             playerRef.current = player;
             setPlayerReady(true);
 
-            // Sync initial position and play state from Supabase when joining an active room
             const initial = latestRoomStateRef.current;
             if (initial.isPlaying || initial.positionSeconds > 2) {
               applyRemoteStateToPlayer(initial.isPlaying, initial.positionSeconds);
@@ -269,7 +370,6 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
             }
           },
           onError: (event) => {
-            // YouTube error 101 or 150 means the video owner disabled embedding
             if (!cancelled && (event.data === 101 || event.data === 150)) {
               setEmbedBlocked(true);
             }
@@ -287,16 +387,16 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
         try {
           playerRef.current.destroy();
         } catch {
-          // Ignore cleanup errors if iframe was already removed
+          // Ignore cleanup errors
         }
         playerRef.current = null;
       }
     };
-  }, [room.id, video.youtubeId]);
+  }, [isArchive, room.id, video.youtubeId]);
 
-  // 2. Detect timeline seeks (when scrubbing while playing or paused)
+  // 2. Detect YouTube timeline seeks
   useEffect(() => {
-    if (!playerReady || embedBlocked) return;
+    if (isArchive || !playerReady || embedBlocked) return;
 
     const intervalId = window.setInterval(() => {
       const player = playerRef.current;
@@ -311,7 +411,6 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
       const elapsedSec = prev.wasPlaying ? (now - prev.wallMs) / 1000 : 0;
       const expectedTime = prev.time + elapsedSec;
 
-      // If the player jumped by more than 2 seconds from expected playback, user seeked
       if (Math.abs(actualTime - expectedTime) > 2) {
         lastTimeCheckRef.current = {
           time: actualTime,
@@ -329,9 +428,9 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     }, 500);
 
     return () => window.clearInterval(intervalId);
-  }, [playerReady, embedBlocked, room.id]);
+  }, [isArchive, playerReady, embedBlocked, room.id]);
 
-  // 3. Subscribe to Supabase Realtime row updates and Realtime Presence for this room
+  // 3. Subscribe to Supabase Realtime row updates, Presence, and Broadcast reactions
   useEffect(() => {
     setSyncStatus('connecting');
 
@@ -340,6 +439,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
         presence: { key: clientIdRef.current },
       },
     });
+    roomChannelRef.current = channel;
 
     channel
       .on(
@@ -369,6 +469,12 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
           applyRemoteStateToPlayer(updated.is_playing, updated.position_seconds);
         }
       )
+      .on('broadcast', { event: 'reaction' }, ({ payload }) => {
+        const data = payload as { id?: string; emoji?: string } | null;
+        if (data?.id && data?.emoji) {
+          spawnFloatingReaction(data.id, data.emoji);
+        }
+      })
       .on('presence', { event: 'sync' }, () => {
         const presenceState = channel.presenceState();
         const count = Object.keys(presenceState).length;
@@ -384,6 +490,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
       });
 
     return () => {
+      roomChannelRef.current = null;
       void supabase.removeChannel(channel);
     };
   }, [room.id]);
@@ -405,8 +512,42 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
     });
   };
 
-  // Manual touch-friendly play/pause control (triggers onStateChange -> pushLocalState)
+  // Broadcast emoji reaction (limited to 1 reaction per second per viewer)
+  const handleSendReaction = (emoji: string) => {
+    const now = Date.now();
+    if (now - lastReactionAtRef.current < REACTION_COOLDOWN_MS) return;
+
+    lastReactionAtRef.current = now;
+    setReactionCooldown(true);
+    window.setTimeout(() => setReactionCooldown(false), REACTION_COOLDOWN_MS);
+
+    const id =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${now}-${Math.random().toString(36).slice(2, 8)}`;
+
+    spawnFloatingReaction(id, emoji);
+
+    void roomChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'reaction',
+      payload: { id, emoji },
+    });
+  };
+
+  // Manual touch-friendly play/pause control
   const handleTogglePlayPause = () => {
+    if (isArchive) {
+      const videoEl = htmlVideoRef.current;
+      if (!videoEl) return;
+      if (videoEl.paused) {
+        void videoEl.play().catch(() => {});
+      } else {
+        videoEl.pause();
+      }
+      return;
+    }
+
     const player = playerRef.current;
     if (!player) return;
 
@@ -490,7 +631,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
             <span className="mx-2" aria-hidden="true">
               ·
             </span>
-            <span>{video.meta}</span>
+            <span>{isArchive ? 'Internet Archive' : video.meta}</span>
           </p>
         </div>
 
@@ -532,9 +673,77 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
       {/* Responsive layout: stacked under video on phones, beside video on laptops */}
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-stretch">
         <div className="lg:col-span-8 flex flex-col">
-          {/* Responsive 16:9 YouTube IFrame API mount or Embed Fallback */}
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#111116] shadow-2xl">
-            {embedBlocked ? (
+          {/* Responsive 16:9 Player + floating reactions overlay */}
+          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#111116] shadow-2xl">
+            {isArchive ? (
+              archiveLoading ? (
+                <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-black p-6 text-center">
+                  <Film className="h-8 w-8 text-[#E50914] animate-pulse" aria-hidden="true" />
+                  <p className="text-sm font-medium text-zinc-200">
+                    Loading movie from Internet Archive...
+                  </p>
+                </div>
+              ) : archiveError || !archiveUrl ? (
+                <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#181820]">
+                    <Film className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
+                  </div>
+                  <div className="max-w-md space-y-1.5">
+                    <p className="font-display text-lg font-semibold text-white">
+                      This Archive movie couldn&apos;t load
+                    </p>
+                    <p className="text-sm text-zinc-400">
+                      The MP4 stream may be unavailable or temporarily slow on Internet Archive.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onBack}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                  >
+                    <span>Try another movie</span>
+                  </button>
+                </div>
+              ) : (
+                <video
+                  ref={htmlVideoRef}
+                  src={archiveUrl}
+                  controls
+                  playsInline
+                  onLoadedMetadata={(e) => {
+                    setPlayerReady(true);
+                    const initial = latestRoomStateRef.current;
+                    if (initial.positionSeconds > 2) {
+                      isApplyingRemoteRef.current = true;
+                      e.currentTarget.currentTime = initial.positionSeconds;
+                      window.setTimeout(() => {
+                        isApplyingRemoteRef.current = false;
+                      }, 700);
+                    }
+                    if (initial.isPlaying) {
+                      void e.currentTarget.play().catch(() => {});
+                    }
+                  }}
+                  onPlay={(e) => {
+                    if (!isApplyingRemoteRef.current) {
+                      void pushLocalState(true, e.currentTarget.currentTime);
+                    }
+                  }}
+                  onPause={(e) => {
+                    if (!isApplyingRemoteRef.current && !e.currentTarget.ended) {
+                      void pushLocalState(false, e.currentTarget.currentTime);
+                    }
+                  }}
+                  onSeeked={(e) => {
+                    if (!isApplyingRemoteRef.current) {
+                      void pushLocalState(!e.currentTarget.paused, e.currentTarget.currentTime);
+                    }
+                  }}
+                  onError={() => setArchiveError(true)}
+                  className="aspect-video w-full bg-black"
+                />
+              )
+            ) : embedBlocked ? (
               <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#181820]">
                   <Lock className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
@@ -552,7 +761,7 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
                   href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612]"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710]"
                 >
                   <span>Open on YouTube</span>
                   <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -561,12 +770,30 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
             ) : (
               <div ref={playerMountRef} className="relative aspect-video w-full bg-black" />
             )}
+
+            {/* Floating emoji reactions overlay (broadcast to everyone in the room) */}
+            {floatingReactions.length > 0 && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
+              >
+                {floatingReactions.map((reaction) => (
+                  <span
+                    key={reaction.id}
+                    style={{ left: `${reaction.leftPercent}%`, bottom: '12%' }}
+                    className="animate-float-reaction absolute text-3xl sm:text-4xl select-none"
+                  >
+                    {reaction.emoji}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Mobile-friendly synced playback controls bar */}
-          {!embedBlocked && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#2a2a33] bg-[#14141a] px-4 py-3">
-              <div className="flex items-center gap-3">
+          {/* Synced playback controls + live emoji reaction buttons */}
+          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#2a2a33] bg-[#14141a] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            {!(embedBlocked || archiveError) ? (
+              <div className="flex flex-wrap items-center justify-between gap-2.5 sm:justify-start">
                 <button
                   type="button"
                   onClick={handleTogglePlayPause}
@@ -586,22 +813,47 @@ export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps
                   )}
                 </button>
 
+                <button
+                  type="button"
+                  onClick={handleManualResync}
+                  disabled={!playerReady || resyncing}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${resyncing ? 'animate-spin' : ''}`}
+                    aria-hidden="true"
+                  />
+                  <span>{resyncing ? 'Syncing...' : 'Sync Player'}</span>
+                </button>
+
                 <span className="font-mono text-xs text-zinc-300 tabular-nums">
-                  Room time: {formatSeconds(roomState.positionSeconds)}
+                  {formatSeconds(roomState.positionSeconds)}
                 </span>
               </div>
+            ) : (
+              <div />
+            )}
 
-              <button
-                type="button"
-                onClick={handleManualResync}
-                disabled={!playerReady || resyncing}
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] disabled:opacity-50 cursor-pointer"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${resyncing ? 'animate-spin' : ''}`} aria-hidden="true" />
-                <span>{resyncing ? 'Syncing...' : 'Sync Player'}</span>
-              </button>
+            {/* Room reactions bar (1 reaction per second per viewer) */}
+            <div
+              role="group"
+              aria-label="Send a reaction to the room"
+              className="flex flex-wrap items-center gap-1.5"
+            >
+              {REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  disabled={reactionCooldown}
+                  onClick={() => handleSendReaction(emoji)}
+                  aria-label={`React with ${emoji}`}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#1b1b24] text-lg transition-colors hover:border-[#E50914] active:bg-[#2a2a38] disabled:opacity-50 cursor-pointer"
+                >
+                  {emoji}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
         </div>
 
         <div className="lg:col-span-4">

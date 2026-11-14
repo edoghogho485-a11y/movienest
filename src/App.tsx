@@ -3,9 +3,9 @@ import { Play, Search, Users, X } from 'lucide-react';
 import { Sidebar, MobileBottomNav, NavSection } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { HeroBanner } from './components/HeroBanner';
-import { CategoryTiles } from './components/CategoryTiles';
+import { CategoryJumpTarget, CategoryTiles } from './components/CategoryTiles';
 import { GenreRows } from './components/GenreRows';
-import { GenreGridView } from './components/GenreGridView';
+import { GenreGridView, SeeAllViewData } from './components/GenreGridView';
 import { PasteYouTubeBar, PastedYouTubeVideo } from './components/PasteYouTubeBar';
 import { VideoPlayerPage, WatchableVideo } from './components/VideoPlayerPage';
 import { RoomPage } from './components/RoomPage';
@@ -13,10 +13,11 @@ import { ModalMode, RoomModal, RoomVideoOption } from './components/RoomModal';
 import { WatchChoiceModal } from './components/WatchChoiceModal';
 import { ShareSheet } from './components/ShareSheet';
 import { YouTubeMovieCard } from './components/YouTubeMovieCard';
-import { GenreDefinition } from './data/genres';
 import { LIBRARY_VIDEOS, LibraryVideo } from './data/libraryVideos';
 import { FEATURED_VIDEOS } from './data/videos';
+import { ArchiveMovieItem, getArchiveThumbnail } from './lib/archive';
 import {
+  getArchiveWatchAloneLink,
   getSiteShareLink,
   getWatchAloneLink,
   ShareTarget,
@@ -60,6 +61,11 @@ function getRoomCodeFromUrl(): string | null {
 
 function getWatchIdFromUrl(): string | null {
   const param = new URLSearchParams(window.location.search).get('watch');
+  return param ? param.trim() : null;
+}
+
+function getArchiveIdFromUrl(): string | null {
+  const param = new URLSearchParams(window.location.search).get('archive');
   return param ? param.trim() : null;
 }
 
@@ -131,6 +137,17 @@ function resolveWatchableById(
   };
 }
 
+function resolveArchiveWatchable(identifier: string): WatchableVideo {
+  return {
+    id: identifier,
+    title: `Archive Movie (${identifier})`,
+    category: 'Internet Archive',
+    youtubeId: identifier,
+    thumbnail: getArchiveThumbnail(identifier),
+    source: 'archive',
+  };
+}
+
 export default function App() {
   const [activeNav, setActiveNav] = useState<NavSection>('home');
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -142,6 +159,8 @@ export default function App() {
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
 
   const [watchingVideo, setWatchingVideo] = useState<WatchableVideo | null>(() => {
+    const archiveId = getArchiveIdFromUrl();
+    if (archiveId) return resolveArchiveWatchable(archiveId);
     const watchId = getWatchIdFromUrl();
     return watchId ? resolveWatchableById(watchId, []) : null;
   });
@@ -168,10 +187,7 @@ export default function App() {
   const [partyJoinError, setPartyJoinError] = useState('');
 
   // See-all genre grid view and jump-to-genre state
-  const [seeAllData, setSeeAllData] = useState<{
-    genre: GenreDefinition;
-    videos: YouTubeSearchResult[];
-  } | null>(null);
+  const [seeAllData, setSeeAllData] = useState<SeeAllViewData | null>(null);
   const [forceLoadSlug, setForceLoadSlug] = useState<string | null>(null);
 
   // TopBar / Movies search state
@@ -200,18 +216,27 @@ export default function App() {
   useEffect(() => {
     const initialRoomCode = getRoomCodeFromUrl();
     const initialWatchId = getWatchIdFromUrl();
+    const initialArchiveId = getArchiveIdFromUrl();
 
     if (initialRoomCode) {
       void loadRoomByCode(initialRoomCode);
-    } else if (initialWatchId) {
+    } else if (initialWatchId || initialArchiveId) {
       setLibraryLoading(false);
     }
 
     const handlePopState = () => {
       const code = getRoomCodeFromUrl();
+      const archiveId = getArchiveIdFromUrl();
       const watchId = getWatchIdFromUrl();
       if (code) {
         void loadRoomByCode(code);
+      } else if (archiveId) {
+        setActiveRoom(null);
+        setRoomNotFoundCode(null);
+        setRoomLoading(false);
+        setSeeAllData(null);
+        setChoiceVideo(null);
+        setWatchingVideo(resolveArchiveWatchable(archiveId));
       } else if (watchId) {
         setActiveRoom(null);
         setRoomNotFoundCode(null);
@@ -304,13 +329,23 @@ export default function App() {
     });
   };
 
+  const openCreateRoomFromArchive = (movie: ArchiveMovieItem) => {
+    openCreateRoom({
+      id: movie.identifier,
+      title: movie.title,
+      thumbnail: movie.thumbnail,
+      youtubeId: movie.identifier,
+      source: 'archive',
+    });
+  };
+
   const openJoinRoom = () => {
     setSelectedVideo(null);
     setStartSeconds(0);
     setModalMode('join');
   };
 
-  // Start Watch Alone solo mode with ?watch=VIDEO_ID (no room, no chat, no Supabase writes)
+  // Start Watch Alone solo mode with ?watch=VIDEO_ID or ?archive=IDENTIFIER (zero Supabase writes)
   const enterWatchAlone = (video: WatchableVideo) => {
     setChoiceVideo(null);
     setModalMode(null);
@@ -320,7 +355,10 @@ export default function App() {
     setWatchingVideo(video);
 
     const url = new URL(window.location.href);
-    url.search = `?watch=${encodeURIComponent(video.youtubeId)}`;
+    url.search =
+      video.source === 'archive'
+        ? `?archive=${encodeURIComponent(video.youtubeId)}`
+        : `?watch=${encodeURIComponent(video.youtubeId)}`;
     window.history.pushState({}, '', url.toString());
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -330,10 +368,16 @@ export default function App() {
     enterWatchAlone({
       id: option.id,
       title: option.title,
-      category: 'Movie',
+      category: option.source === 'archive' ? 'Internet Archive' : 'Movie',
       youtubeId,
-      thumbnail: option.thumbnail || getYouTubeThumbnail(youtubeId),
+      thumbnail:
+        option.thumbnail ||
+        (option.source === 'archive'
+          ? getArchiveThumbnail(youtubeId)
+          : getYouTubeThumbnail(youtubeId)),
       duration: option.duration,
+      source: option.source,
+      videoUrl: option.videoUrl,
     });
   };
 
@@ -365,6 +409,16 @@ export default function App() {
     });
   };
 
+  const openChoiceForArchive = (movie: ArchiveMovieItem) => {
+    setChoiceVideo({
+      id: movie.identifier,
+      title: movie.title,
+      thumbnail: movie.thumbnail,
+      youtubeId: movie.identifier,
+      source: 'archive',
+    });
+  };
+
   const handleSavedToLibrary = (item: SharedLibraryItem) => {
     setSharedLibrary((prev) =>
       prev.some((existing) => existing.id === item.id || existing.video_id === item.video_id)
@@ -393,6 +447,15 @@ export default function App() {
       videoId,
       title,
       url: getWatchAloneLink(videoId),
+    });
+  };
+
+  const openShareForArchive = (movie: ArchiveMovieItem) => {
+    setShareTarget({
+      kind: 'video',
+      videoId: movie.identifier,
+      title: movie.title,
+      url: getArchiveWatchAloneLink(movie.identifier),
     });
   };
 
@@ -465,7 +528,7 @@ export default function App() {
     setSearchError(false);
   };
 
-  const handleJumpToGenre = (genre: GenreDefinition) => {
+  const handleJumpToGenre = (genre: CategoryJumpTarget) => {
     setSeeAllData(null);
     setForceLoadSlug(genre.slug);
     if (activeNav === 'watch-party') {
@@ -596,6 +659,8 @@ export default function App() {
                     duration: video.duration,
                     thumbnail: video.thumbnail,
                     youtubeId: video.youtubeId,
+                    source: video.source,
+                    videoUrl: video.videoUrl,
                   },
                   currentSeconds
                 )
@@ -613,13 +678,15 @@ export default function App() {
             />
           ) : seeAllData ? (
             <GenreGridView
-              genre={seeAllData.genre}
-              videos={seeAllData.videos}
+              data={seeAllData}
               onBack={() => setSeeAllData(null)}
-              onWatch={openChoiceForSearch}
-              onCreateRoom={openCreateRoomFromSearch}
-              onShare={(video) => openShareForVideo(video.videoId, video.title)}
+              onWatchYouTube={openChoiceForSearch}
+              onCreateRoomYouTube={openCreateRoomFromSearch}
+              onShareYouTube={(video) => openShareForVideo(video.videoId, video.title)}
               onSavedToLibrary={handleSavedToLibrary}
+              onWatchArchive={openChoiceForArchive}
+              onCreateRoomArchive={openCreateRoomFromArchive}
+              onShareArchive={openShareForArchive}
             />
           ) : null}
 
@@ -899,12 +966,19 @@ export default function App() {
                     libraryLoading={libraryLoading}
                     sampleVideos={LIBRARY_VIDEOS}
                     onSeeAllGenre={(genre, videos) => {
-                      setSeeAllData({ genre, videos });
+                      setSeeAllData({ kind: 'youtube', genre, videos });
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    onSeeAllArchiveGenre={(genre, movies) => {
+                      setSeeAllData({ kind: 'archive', genre, movies });
                       window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     onWatchYouTube={openChoiceForSearch}
                     onCreateRoomYouTube={openCreateRoomFromSearch}
                     onShareYouTube={(video) => openShareForVideo(video.videoId, video.title)}
+                    onWatchArchive={openChoiceForArchive}
+                    onCreateRoomArchive={openCreateRoomFromArchive}
+                    onShareArchive={openShareForArchive}
                     onSavedToLibrary={handleSavedToLibrary}
                     onWatchLibraryItem={openChoiceForSharedLibrary}
                     onShareLibraryItem={(item) => openShareForVideo(item.video_id, item.title)}
@@ -959,7 +1033,15 @@ export default function App() {
         sharedLibrary={sharedLibrary}
         onClose={() => setModalMode(null)}
         onOpenRoom={handleEnterRoom}
-        onWatchAlone={(videoId) => {
+        onWatchAlone={(videoId, source) => {
+          if (source === 'archive') {
+            if (selectedVideo && (selectedVideo.youtubeId === videoId || selectedVideo.id === videoId)) {
+              enterWatchAloneFromOption(selectedVideo);
+              return;
+            }
+            enterWatchAlone(resolveArchiveWatchable(videoId));
+            return;
+          }
           if (selectedVideo && (selectedVideo.youtubeId === videoId || selectedVideo.id === videoId)) {
             enterWatchAloneFromOption(selectedVideo);
             return;

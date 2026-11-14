@@ -13,6 +13,8 @@ export interface RoomRecord {
   code: string;
   name: string;
   video_id: string;
+  source?: 'youtube' | 'archive' | string | null;
+  video_url?: string | null;
   is_playing: boolean;
   position_seconds: number;
   updated_at: string;
@@ -41,10 +43,13 @@ export function getInviteLink(code: string): string {
 export async function createRoomInSupabase(params: {
   name: string;
   videoId: string;
+  source?: 'youtube' | 'archive';
+  videoUrl?: string | null;
   positionSeconds?: number;
 }): Promise<{ room: RoomRecord | null; error: string | null }> {
   const cleanName = params.name.trim() || 'Private Screening Room';
   const startSeconds = Math.max(0, Math.floor(params.positionSeconds ?? 0));
+  const videoSource = params.source ?? 'youtube';
 
   // Check Supabase before inserting so we generate a fresh code if already taken
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -70,6 +75,8 @@ export async function createRoomInSupabase(params: {
         code,
         name: cleanName,
         video_id: params.videoId,
+        source: videoSource,
+        video_url: params.videoUrl ?? null,
         is_playing: false,
         position_seconds: startSeconds,
       })

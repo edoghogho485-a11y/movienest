@@ -3,6 +3,7 @@ import { ArrowRight, Check, Copy, Play, Share2, Users, X } from 'lucide-react';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
 import { copyTextToClipboard, ShareTarget } from '../lib/share';
+import { fetchArchiveMovieDetails } from '../lib/archive';
 import {
   createRoomInSupabase,
   findRoomByCode,
@@ -20,6 +21,8 @@ export interface RoomVideoOption {
   duration?: string;
   thumbnail: string;
   youtubeId?: string;
+  source?: 'youtube' | 'archive';
+  videoUrl?: string;
 }
 
 interface RoomModalProps {
@@ -29,7 +32,7 @@ interface RoomModalProps {
   sharedLibrary: SharedLibraryItem[];
   onClose: () => void;
   onOpenRoom: (room: RoomRecord) => void;
-  onWatchAlone: (videoId: string) => void;
+  onWatchAlone: (videoId: string, source?: 'youtube' | 'archive') => void;
   onShareRoom: (target: ShareTarget) => void;
   onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
@@ -126,13 +129,46 @@ export function RoomModal({
     return roomName.trim() || 'Movie Night';
   };
 
-  const createRoomForVideoId = async (videoIdToSave: string, explicitTitle?: string) => {
+  const createRoomForVideoId = async (
+    videoIdToSave: string,
+    explicitTitle?: string,
+    overrideSource?: 'youtube' | 'archive',
+    overrideVideoUrl?: string
+  ) => {
     setErrorMsg('');
     setSubmitting(true);
+
+    const isSelectedInitial =
+      initialVideo &&
+      (initialVideo.youtubeId === videoIdToSave || initialVideo.id === videoIdToSave);
+    const resolvedSource: 'youtube' | 'archive' =
+      overrideSource ?? (isSelectedInitial ? initialVideo?.source ?? 'youtube' : 'youtube');
+
+    let resolvedVideoUrl: string | null =
+      overrideVideoUrl ?? (isSelectedInitial ? initialVideo?.videoUrl ?? null : null);
+    let resolvedTitle = explicitTitle ?? resolveVideoTitle(videoIdToSave);
+
+    // For Internet Archive movies, resolve the first .mp4 URL before saving the room
+    if (resolvedSource === 'archive' && !resolvedVideoUrl) {
+      const details = await fetchArchiveMovieDetails(videoIdToSave);
+      if (!details.mp4Url) {
+        setSubmitting(false);
+        setErrorMsg(
+          "This Archive movie doesn't have a playable MP4 file. Please pick another movie."
+        );
+        return;
+      }
+      resolvedVideoUrl = details.mp4Url;
+      if (details.title && !explicitTitle) {
+        resolvedTitle = details.title;
+      }
+    }
 
     const { room, error } = await createRoomInSupabase({
       name: roomName,
       videoId: videoIdToSave,
+      source: resolvedSource,
+      videoUrl: resolvedVideoUrl,
       positionSeconds: initialPositionSeconds,
     });
 
@@ -143,7 +179,7 @@ export function RoomModal({
       return;
     }
 
-    setCreatedVideoTitle(explicitTitle ?? resolveVideoTitle(videoIdToSave));
+    setCreatedVideoTitle(resolvedTitle);
     setCreatedRoom(room);
   };
 
@@ -155,7 +191,7 @@ export function RoomModal({
   // Triggered when user clicks "Create Room with this" inside the modal's Paste-a-Link bar
   const handleCreateWithPastedYouTube = async (pasted: PastedYouTubeVideo) => {
     setSelectedVideoId(pasted.videoId);
-    await createRoomForVideoId(pasted.videoId, pasted.title);
+    await createRoomForVideoId(pasted.videoId, pasted.title, 'youtube');
   };
 
   const handleJoinSubmit = async (e: FormEvent) => {
@@ -348,7 +384,13 @@ export function RoomModal({
                   className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] px-3.5 py-2.5 text-sm text-white focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
                 >
                   {!isKnownDropdownOption && initialVideo && (
-                    <optgroup label="Selected YouTube Video">
+                    <optgroup
+                      label={
+                        initialVideo.source === 'archive'
+                          ? 'Selected Internet Archive Movie'
+                          : 'Selected YouTube Video'
+                      }
+                    >
                       <option value={initialVideo.youtubeId ?? initialVideo.id}>
                         {initialVideo.title}
                       </option>
@@ -389,7 +431,16 @@ export function RoomModal({
               <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
-                  onClick={() => onWatchAlone(selectedVideoId)}
+                  onClick={() => {
+                    const isSelectedInitial =
+                      initialVideo &&
+                      (initialVideo.youtubeId === selectedVideoId ||
+                        initialVideo.id === selectedVideoId);
+                    onWatchAlone(
+                      selectedVideoId,
+                      isSelectedInitial ? initialVideo?.source : 'youtube'
+                    );
+                  }}
                   className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
                 >
                   <Play className="h-4 w-4 text-[#E50914] fill-current" aria-hidden="true" />

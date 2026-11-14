@@ -16,6 +16,7 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react';
+import { ARCHIVE_GENRE_LIST } from '../lib/archive';
 import { GENRE_LIST, GenreDefinition, GenreIconKey } from '../data/genres';
 
 const ICON_MAP: Record<GenreIconKey, typeof Film> = {
@@ -37,11 +38,38 @@ const ICON_MAP: Record<GenreIconKey, typeof Film> = {
   globe: Globe,
 };
 
+const ARCHIVE_ICON_MAP: Record<string, typeof Film> = {
+  'classic-movies': Film,
+  'sci-fi-classics': Rocket,
+  'horror-classics': Ghost,
+  'comedy-classics': Laugh,
+  cartoons: Clapperboard,
+};
+
+export interface CategoryJumpTarget {
+  slug: string;
+  name: string;
+}
+
 interface CategoryTilesProps {
-  onSelectGenre: (genre: GenreDefinition) => void;
+  onSelectGenre: (genre: CategoryJumpTarget) => void;
 }
 
 export function CategoryTiles({ onSelectGenre }: CategoryTilesProps) {
+  const allCategories: Array<{ slug: string; name: string; icon: typeof Film; badge?: string }> = [
+    ...GENRE_LIST.map((g: GenreDefinition) => ({
+      slug: g.slug,
+      name: g.name,
+      icon: ICON_MAP[g.icon],
+    })),
+    ...ARCHIVE_GENRE_LIST.map((g) => ({
+      slug: g.slug,
+      name: g.name,
+      icon: ARCHIVE_ICON_MAP[g.slug] ?? Film,
+      badge: 'Archive',
+    })),
+  ];
+
   return (
     <section
       aria-labelledby="browse-by-category-heading"
@@ -59,20 +87,20 @@ export function CategoryTiles({ onSelectGenre }: CategoryTilesProps) {
 
       {/* Simple CSS grid: 2 columns on phones, 4 to 6 columns on laptops; no blur/glow/transform layers */}
       <div className="mt-3.5 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
-        {GENRE_LIST.map((genre) => {
-          const Icon = ICON_MAP[genre.icon];
+        {allCategories.map((category) => {
+          const Icon = category.icon;
           return (
             <button
-              key={genre.slug}
+              key={category.slug}
               type="button"
-              onClick={() => onSelectGenre(genre)}
+              onClick={() => onSelectGenre({ slug: category.slug, name: category.name })}
               className="flex h-16 w-full items-center gap-3 rounded-xl border border-[#2a2a33] bg-[#14141a] px-3 text-left transition-colors hover:border-[#E50914] hover:bg-[#1b1b24] active:bg-[#1f1f29] cursor-pointer"
             >
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#20202a] text-[#E50914]">
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1 text-xs sm:text-sm font-medium text-white line-clamp-2 leading-tight">
-                {genre.name}
+                {category.name}
               </span>
             </button>
           );

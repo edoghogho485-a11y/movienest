@@ -8,7 +8,12 @@ import {
   Users,
 } from 'lucide-react';
 import { LibraryVideo } from '../data/libraryVideos';
-import { getWatchAloneLink, ShareTarget } from '../lib/share';
+import { fetchArchiveMovieDetails } from '../lib/archive';
+import {
+  getArchiveWatchAloneLink,
+  getWatchAloneLink,
+  ShareTarget,
+} from '../lib/share';
 import {
   fetchYouTubeTitle,
   loadYouTubeIframeAPI,
@@ -22,6 +27,8 @@ export interface WatchableVideo {
   youtubeId: string;
   thumbnail: string;
   duration?: string;
+  source?: 'youtube' | 'archive';
+  videoUrl?: string;
 }
 
 interface VideoPlayerPageProps {
@@ -81,7 +88,7 @@ function RelatedVideoCard({
   );
 }
 
-// Solo player page (?watch=VIDEO_ID): zero room, zero invite code, zero chat, zero presence, zero Supabase writes
+// Solo player page (?watch=VIDEO_ID or ?archive=IDENTIFIER): zero room, zero chat, zero reactions, zero Supabase writes
 export function VideoPlayerPage({
   video,
   relatedVideos,
@@ -90,15 +97,26 @@ export function VideoPlayerPage({
   onInviteFriends,
   onSelectSampleVideo,
 }: VideoPlayerPageProps) {
+  const isArchive = video.source === 'archive';
+
   const [embedBlocked, setEmbedBlocked] = useState(false);
   const [resolvedTitle, setResolvedTitle] = useState<string | null>(null);
+  const [archiveUrl, setArchiveUrl] = useState<string | null>(
+    isArchive ? video.videoUrl ?? null : null
+  );
+  const [archiveLoading, setArchiveLoading] = useState<boolean>(
+    isArchive && !video.videoUrl
+  );
+  const [archiveError, setArchiveError] = useState<boolean>(false);
+
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
+  const htmlVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  // If opened directly via ?watch=VIDEO_ID without a preloaded title, resolve title via oEmbed
+  // Resolve YouTube title via oEmbed when opened directly via ?watch=VIDEO_ID
   useEffect(() => {
     setResolvedTitle(null);
-    if (!video.title.startsWith('YouTube Video (')) return;
+    if (isArchive || !video.title.startsWith('YouTube Video (')) return;
 
     let cancelled = false;
     fetchYouTubeTitle(video.youtubeId).then((fetched) => {
@@ -107,9 +125,50 @@ export function VideoPlayerPage({
     return () => {
       cancelled = true;
     };
-  }, [video.youtubeId, video.title]);
+  }, [isArchive, video.youtubeId, video.title]);
 
+  // Resolve Internet Archive MP4 URL + title from metadata when source === 'archive'
   useEffect(() => {
+    if (!isArchive) {
+      setArchiveUrl(null);
+      setArchiveLoading(false);
+      setArchiveError(false);
+      return;
+    }
+
+    if (video.videoUrl) {
+      setArchiveUrl(video.videoUrl);
+      setArchiveLoading(false);
+      setArchiveError(false);
+      return;
+    }
+
+    let cancelled = false;
+    setArchiveLoading(true);
+    setArchiveError(false);
+
+    fetchArchiveMovieDetails(video.youtubeId).then((details) => {
+      if (cancelled) return;
+      setArchiveLoading(false);
+      if (details.title) {
+        setResolvedTitle(details.title);
+      }
+      if (!details.mp4Url) {
+        setArchiveError(true);
+        return;
+      }
+      setArchiveUrl(details.mp4Url);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isArchive, video.youtubeId, video.videoUrl]);
+
+  // Initialize YouTube IFrame Player only when source is YouTube
+  useEffect(() => {
+    if (isArchive) return;
+
     let cancelled = false;
     setEmbedBlocked(false);
 
@@ -160,7 +219,7 @@ export function VideoPlayerPage({
         playerRef.current = null;
       }
     };
-  }, [video.youtubeId]);
+  }, [isArchive, video.youtubeId]);
 
   const displayTitle = resolvedTitle ?? video.title;
 
@@ -169,21 +228,30 @@ export function VideoPlayerPage({
       kind: 'video',
       title: displayTitle,
       videoId: video.youtubeId,
-      url: getWatchAloneLink(video.youtubeId),
+      url: isArchive
+        ? getArchiveWatchAloneLink(video.youtubeId)
+        : getWatchAloneLink(video.youtubeId),
     });
   };
 
   const handleInviteFriends = () => {
     let currentTime = 0;
     try {
-      currentTime = playerRef.current?.getCurrentTime() ?? 0;
+      if (isArchive) {
+        currentTime = htmlVideoRef.current?.currentTime ?? 0;
+      } else {
+        currentTime = playerRef.current?.getCurrentTime() ?? 0;
+      }
     } catch {
       currentTime = 0;
     }
+
     onInviteFriends(
       {
         ...video,
         title: displayTitle,
+        source: isArchive ? 'archive' : 'youtube',
+        videoUrl: archiveUrl ?? video.videoUrl,
       },
       Math.max(0, Math.floor(currentTime))
     );
@@ -201,7 +269,47 @@ export function VideoPlayerPage({
       </button>
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-[#2a2a33] bg-[#14141a]">
-        {embedBlocked ? (
+        {isArchive ? (
+          archiveLoading ? (
+            <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-black p-6 text-center">
+              <Film className="h-8 w-8 text-[#E50914] animate-pulse" aria-hidden="true" />
+              <p className="text-sm font-medium text-zinc-200">
+                Loading movie from Internet Archive...
+              </p>
+            </div>
+          ) : archiveError || !archiveUrl ? (
+            <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#2a2a33] bg-[#1b1b24]">
+                <Film className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
+              </div>
+              <div className="max-w-md space-y-1.5">
+                <p className="font-display text-lg font-semibold text-white">
+                  This Archive movie couldn&apos;t load
+                </p>
+                <p className="text-sm text-zinc-400">
+                  The MP4 stream may be unavailable or temporarily slow on Internet Archive.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onBack}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+              >
+                <span>Try another movie</span>
+              </button>
+            </div>
+          ) : (
+            <video
+              ref={htmlVideoRef}
+              src={archiveUrl}
+              controls
+              playsInline
+              autoPlay
+              onError={() => setArchiveError(true)}
+              className="aspect-video w-full bg-black"
+            />
+          )
+        ) : embedBlocked ? (
           <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#2a2a33] bg-[#1b1b24]">
               <Lock className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
@@ -240,7 +348,7 @@ export function VideoPlayerPage({
             <span className="mx-2" aria-hidden="true">
               ·
             </span>
-            <span>{video.category}</span>
+            <span>{isArchive ? 'Internet Archive' : video.category}</span>
             {video.duration && (
               <>
                 <span className="mx-2" aria-hidden="true">

@@ -25,6 +25,13 @@ export function getWatchAloneLink(videoId: string): string {
   return url.toString();
 }
 
+export function getArchiveWatchAloneLink(identifier: string): string {
+  const url = new URL(window.location.href);
+  url.search = `?archive=${encodeURIComponent(identifier)}`;
+  url.hash = '';
+  return url.toString();
+}
+
 export function getSiteShareLink(): string {
   const url = new URL(window.location.href);
   url.search = '';

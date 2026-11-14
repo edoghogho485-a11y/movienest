@@ -31,8 +31,31 @@
   scrollbar-width: none;
 }
 
+@keyframes float-reaction {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.8);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-170px) scale(1.25);
+  }
+}
+
+.animate-float-reaction {
+  animation: float-reaction 2.2s ease-out forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .animate-float-reaction {
+    animation-duration: 1.2s;
   }
 }
