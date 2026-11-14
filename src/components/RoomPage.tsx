@@ -1,26 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowLeft,
-  Check,
-  Copy,
-  Crown,
   ExternalLink,
   Film,
   ListVideo,
   Lock,
   MessageSquare,
-  Pause,
-  Play,
-  RefreshCw,
   Settings,
-  Share2,
-  Timer,
   Users,
-  Video,
+  X,
 } from 'lucide-react';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
-import { useRoomChannels } from '../hooks/useRoomChannels';
+import {
+  ReadyCheckEventPayload,
+  useRoomChannels,
+} from '../hooks/useRoomChannels';
 import {
   fetchArchiveMovieDetails,
   getArchiveThumbnail,
@@ -50,18 +44,49 @@ import {
   YTPlayer,
 } from '../lib/youtube';
 import { BookmarkButton } from './BookmarkButton';
+import { ReadyCheckPrompt } from './ReadyCheckPrompt';
 import { RoomChat } from './RoomChat';
-import { RoomPeopleList } from './RoomPeopleList';
 import { RoomQueuePanel } from './RoomQueuePanel';
+import { RoomReactionBar } from './RoomReactionBar';
+import { RoomSeatsPanel, SeatReaction } from './RoomSeatsPanel';
 import { RoomSettingsModal } from './RoomSettingsModal';
+import { RoomTopBar } from './RoomTopBar';
 import {
   PickerMovieSelection,
   RoomVideoPickerModal,
 } from './RoomVideoPickerModal';
 
-const REACTION_EMOJIS = ['❤️', '😂', '😭', '😡', '😮', '🔥'] as const;
 const REACTION_COOLDOWN_MS = 1000;
+const DIM_LIGHTS_STORAGE_KEY = 'movienest_dim_lights';
+const READY_CHECK_TIMEOUT_MS = 20_000;
 const EMPTY_LIBRARY: SharedLibraryItem[] = [];
+
+function readSavedDimLights(): boolean {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    return window.localStorage.getItem(DIM_LIGHTS_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeSavedDimLights(enabled: boolean): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(DIM_LIGHTS_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    // Ignore storage quota / privacy mode errors
+  }
+}
+
+function detectPhoneLandscape(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.innerWidth > window.innerHeight &&
+    window.innerHeight <= 540 &&
+    window.innerWidth <= 960
+  );
+}
 
 interface FloatingReaction {
   id: string;
@@ -73,6 +98,13 @@ interface FloatingReaction {
 interface RoomToast {
   id: string;
   text: string;
+}
+
+interface ActiveReadyCheck {
+  checkId: string;
+  positionSeconds: number;
+  startedAt: number;
+  readyClientIds: string[];
 }
 
 function resolveRoomVideo(videoId: string, sharedLibrary: SharedLibraryItem[]) {
@@ -278,10 +310,13 @@ export function RoomPage({
     return promptNeeded ? false : Boolean(safeInitial.is_playing);
   });
 
-  // Live player time ticked every second from the active player
-  const [roomTimeSeconds, setRoomTimeSeconds] = useState<number>(() => {
+  // Live host clock shown in non-host "Host is at 42:10" bar (ticks every second from server timestamp)
+  const [hostDisplayState, setHostDisplayState] = useState<{
+    positionSeconds: number;
+    hostAway: boolean;
+  }>(() => {
     const live = getHostLiveState(buildSafeRoomFallback(room));
-    return live.positionSeconds;
+    return { positionSeconds: live.positionSeconds, hostAway: live.hostAway };
   });
 
   const [playerReady, setPlayerReady] = useState(false);
@@ -297,15 +332,24 @@ export function RoomPage({
   );
   const [archiveError, setArchiveError] = useState<boolean>(false);
 
-  // Floating reactions, activity/presence toasts, countdown overlay, modals, and mobile tabs
+  // Floating reactions (both seat-anchored and video overlay for landscape/dimmed), toasts, Ready Check, countdown, Dim the Lights & overlays
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
+  const [seatReactions, setSeatReactions] = useState<SeatReaction[]>([]);
   const [reactionNote, setReactionNote] = useState<string | null>(null);
   const [toasts, setToasts] = useState<RoomToast[]>([]);
+  const [readyCheck, setReadyCheck] = useState<ActiveReadyCheck | null>(null);
+  const [readySecondsLeft, setReadySecondsLeft] = useState<number>(20);
   const [countdownValue, setCountdownValue] = useState<number | null>(null);
+
+  const [dimLights, setDimLights] = useState<boolean>(readSavedDimLights);
+  const [dimOverlayTab, setDimOverlayTab] = useState<'chat' | 'seats' | null>(null);
+  const [isPhoneLandscape, setIsPhoneLandscape] = useState<boolean>(detectPhoneLandscape);
+  const [landscapeChatOpen, setLandscapeChatOpen] = useState<boolean>(false);
+  const [mobileQueueOpen, setMobileQueueOpen] = useState<boolean>(false);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [queueBusyId, setQueueBusyId] = useState<string | null>(null);
-  const [mobileTab, setMobileTab] = useState<'chat' | 'people' | 'queue'>('chat');
 
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
@@ -339,6 +383,9 @@ export function RoomPage({
   const pushDebounceTimerRef = useRef<number | null>(null);
   const recentSentTimestampsRef = useRef<Set<number>>(new Set());
   const countdownTimersRef = useRef<number[]>([]);
+  const readyCheckRef = useRef<ActiveReadyCheck | null>(null);
+  readyCheckRef.current = readyCheck;
+  const readyTriggeredCheckIdRef = useRef<string | null>(null);
   const applyRemoteStateRef = useRef<
     (isPlaying: boolean, targetSeconds: number, forceSeek?: boolean) => void
   >(() => {});
@@ -375,8 +422,13 @@ export function RoomPage({
       hostAway: hostLive.hostAway,
     });
     setRoomState({ isPlaying: hostLive.isPlaying, positionSeconds: hostLive.positionSeconds });
-    setRoomTimeSeconds(hostLive.positionSeconds);
+    setHostDisplayState({
+      positionSeconds: hostLive.positionSeconds,
+      hostAway: hostLive.hostAway,
+    });
     setLocalIsPlaying(shouldPrompt ? false : hostLive.isPlaying);
+    setReadyCheck(null);
+    readyTriggeredCheckIdRef.current = null;
     initialJoinTargetRef.current = {
       isPlaying: hostLive.isPlaying,
       positionSeconds: hostLive.positionSeconds,
@@ -561,21 +613,32 @@ export function RoomPage({
     isApplyingRemoteRef.current = false;
   }, []);
 
-  // Spawn an emoji (with sender's username) that floats up over the video
-  const spawnFloatingReaction = useCallback((id: string, emoji: string, sender?: string) => {
-    const leftPercent = 14 + Math.floor(Math.random() * 72);
-    setFloatingReactions((prev) => {
-      if (prev.some((item) => item.id === id)) return prev;
-      return [...prev.slice(-18), { id, emoji, sender, leftPercent }];
-    });
+  // Spawn an emoji on the sender's seat AND on the video overlay (used in landscape / dim lights)
+  const spawnReaction = useCallback(
+    (id: string, emoji: string, sender?: string, clientId?: string) => {
+      const leftPercent = 14 + Math.floor(Math.random() * 72);
+      setFloatingReactions((prev) => {
+        if (prev.some((item) => item.id === id)) return prev;
+        return [...prev.slice(-18), { id, emoji, sender, leftPercent }];
+      });
+      setSeatReactions((prev) => {
+        if (prev.some((item) => item.id === id)) return prev;
+        return [...prev.slice(-18), { id, emoji, sender, clientId }];
+      });
 
-    window.setTimeout(() => {
-      setFloatingReactions((prev) => prev.filter((item) => item.id !== id));
-    }, 2300);
-  }, []);
+      window.setTimeout(() => {
+        setFloatingReactions((prev) => prev.filter((item) => item.id !== id));
+      }, 2300);
+      window.setTimeout(() => {
+        setSeatReactions((prev) => prev.filter((item) => item.id !== id));
+      }, 2100);
+    },
+    []
+  );
 
   // Single shared hook managing "room-db:CODE" and "room-live:CODE" channels for this room
   const {
+    myClientId,
     syncStatus,
     participants,
     messages: chatMessages,
@@ -586,6 +649,7 @@ export function RoomPage({
     sendActivity: broadcastActivity,
     sendCountdown,
     sendHostSync,
+    sendReadyCheck,
   } = useRoomChannels({
     roomId: currentRoom.id,
     roomCode: currentRoom.code,
@@ -594,6 +658,11 @@ export function RoomPage({
     independentMode: !isHost && ownPace,
     onRoomUpdated: (updated) => {
       latestServerRoomRef.current = updated;
+      const hostLive = getHostLiveState(updated);
+      setHostDisplayState({
+        positionSeconds: hostLive.positionSeconds,
+        hostAway: hostLive.hostAway,
+      });
 
       const prevRoom = latestRoomRef.current;
       const videoChanged =
@@ -604,7 +673,6 @@ export function RoomPage({
       // While a non-host hasn't chosen how to join yet, update metadata silently without touching playback
       if (joinChoicePendingRef.current) {
         setCurrentRoom(updated);
-        const hostLive = getHostLiveState(updated);
         setJoinModalState({
           positionSeconds: hostLive.positionSeconds,
           hostAway: hostLive.hostAway,
@@ -636,7 +704,6 @@ export function RoomPage({
 
       // Non-host in Following mode: apply host video/playback updates
       setCurrentRoom(updated);
-      const hostLive = getHostLiveState(updated);
 
       if (videoChanged) {
         initialJoinTargetRef.current = {
@@ -648,7 +715,6 @@ export function RoomPage({
           isPlaying: hostLive.isPlaying,
           positionSeconds: hostLive.positionSeconds,
         });
-        setRoomTimeSeconds(hostLive.positionSeconds);
         setLocalIsPlaying(hostLive.isPlaying);
         return;
       }
@@ -668,12 +734,11 @@ export function RoomPage({
         return;
       }
 
-      setRoomTimeSeconds(hostLive.positionSeconds);
       setLocalIsPlaying(hostLive.isPlaying);
       applyRemoteStateRef.current(hostLive.isPlaying, hostLive.positionSeconds, false);
     },
     onReactionReceived: (payload) => {
-      spawnFloatingReaction(payload.id, payload.emoji, payload.sender);
+      spawnReaction(payload.id, payload.emoji, payload.sender, payload.clientId);
     },
     onActivityReceived: ({ actor, action, positionSeconds }) => {
       if (joinChoicePendingRef.current) return;
@@ -690,6 +755,7 @@ export function RoomPage({
     },
     onCountdownReceived: (positionSeconds) => {
       if (latestIsHostRef.current || joinChoicePendingRef.current || ownPaceRef.current) return;
+      setReadyCheck(null);
       runSyncedCountdownRef.current(positionSeconds, false);
     },
     onHostSyncReceived: ({ positionSeconds, isPlaying }) => {
@@ -698,6 +764,7 @@ export function RoomPage({
       // Return every non-host back to Following mode and jump to the host's timestamp
       ownPaceRef.current = false;
       setOwnPace(false);
+      setReadyCheck(null);
 
       const serverRoom = latestServerRoomRef.current ?? latestRoomRef.current;
       const prevRoom = latestRoomRef.current;
@@ -707,7 +774,7 @@ export function RoomPage({
         (serverRoom.video_url ?? null) !== (prevRoom.video_url ?? null);
 
       setRoomState({ isPlaying, positionSeconds });
-      setRoomTimeSeconds(positionSeconds);
+      setHostDisplayState({ positionSeconds, hostAway: false });
       setLocalIsPlaying(isPlaying);
 
       if (videoChanged) {
@@ -719,6 +786,40 @@ export function RoomPage({
       }
 
       showToast('Host synced everyone');
+    },
+    onReadyCheckReceived: (payload: ReadyCheckEventPayload) => {
+      if (joinChoicePendingRef.current) return;
+
+      if (payload.action === 'cancel') {
+        setReadyCheck((prev) => (prev?.checkId === payload.checkId ? null : prev));
+        return;
+      }
+
+      if (payload.action === 'start') {
+        if (latestIsHostRef.current || ownPaceRef.current) return;
+        const pos = payload.positionSeconds ?? 0;
+        applyRemoteStateRef.current(false, pos, true);
+        setLocalIsPlaying(false);
+        setReadySecondsLeft(20);
+        setReadyCheck({
+          checkId: payload.checkId,
+          positionSeconds: pos,
+          startedAt: Date.now(),
+          readyClientIds: [payload.clientId],
+        });
+        return;
+      }
+
+      if (payload.action === 'ready') {
+        setReadyCheck((prev) => {
+          if (!prev || prev.checkId !== payload.checkId) return prev;
+          if (prev.readyClientIds.includes(payload.clientId)) return prev;
+          return {
+            ...prev,
+            readyClientIds: [...prev.readyClientIds, payload.clientId],
+          };
+        });
+      }
     },
     onPresenceNotice: (text) => {
       showToast(text);
@@ -897,7 +998,7 @@ export function RoomPage({
       };
       latestServerRoomRef.current = latestRoomRef.current;
       setRoomState({ isPlaying, positionSeconds: safePos });
-      setRoomTimeSeconds(safePos);
+      setHostDisplayState({ positionSeconds: safePos, hostAway: false });
 
       if (!skipActivityBroadcast) {
         broadcastActivity(action, safePos);
@@ -991,7 +1092,7 @@ export function RoomPage({
         return nextRoom;
       });
       setRoomState({ isPlaying: shouldAutoPlay, positionSeconds: 0 });
-      setRoomTimeSeconds(0);
+      setHostDisplayState({ positionSeconds: 0, hostAway: false });
       setLocalIsPlaying(shouldAutoPlay);
       broadcastActivity('video', 0);
       return null;
@@ -1108,7 +1209,6 @@ export function RoomPage({
 
             const needsSeekOrPlay = target.positionSeconds > 1 || target.isPlaying;
             markProgrammaticChange(needsSeekOrPlay ? 2200 : 600);
-            setRoomTimeSeconds(target.positionSeconds);
             setLocalIsPlaying(target.isPlaying);
             lastTimeCheckRef.current = {
               time: target.positionSeconds,
@@ -1278,16 +1378,72 @@ export function RoomPage({
     enterOwnPace,
   ]);
 
-  // 3. Keep player time updated every second from the real player time
+  // 3a. Detect phone landscape orientation for fullscreen video + slide-in chat drawer
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (!playerReady || joinChoicePending) return;
-      const liveTime = getCurrentPlayerTime();
-      setRoomTimeSeconds(Math.max(0, Math.floor(liveTime)));
-    }, 1000);
+    const syncOrientation = () => {
+      const next = detectPhoneLandscape();
+      setIsPhoneLandscape(next);
+      if (!next) {
+        setLandscapeChatOpen(false);
+      }
+    };
+    syncOrientation();
+    window.addEventListener('resize', syncOrientation);
+    window.addEventListener('orientationchange', syncOrientation);
+    return () => {
+      window.removeEventListener('resize', syncOrientation);
+      window.removeEventListener('orientationchange', syncOrientation);
+    };
+  }, []);
 
+  // 3b. Keep non-host "Host is at 42:10" display ticking every 2 seconds from the server timestamp
+  useEffect(() => {
+    if (isHost) return;
+    const refreshHostClock = () => {
+      const live = getHostLiveState(latestServerRoomRef.current);
+      setHostDisplayState({ positionSeconds: live.positionSeconds, hostAway: live.hostAway });
+    };
+    refreshHostClock();
+    const timer = window.setInterval(refreshHostClock, 2000);
     return () => window.clearInterval(timer);
-  }, [playerReady, joinChoicePending, getCurrentPlayerTime]);
+  }, [isHost, currentRoom.id]);
+
+  // 3c. Ready Check countdown timer & host auto-start when everyone is ready or 20s expires
+  useEffect(() => {
+    if (!readyCheck) return;
+
+    const triggerCountdownFromCheck = (check: ActiveReadyCheck) => {
+      if (readyTriggeredCheckIdRef.current === check.checkId) return;
+      readyTriggeredCheckIdRef.current = check.checkId;
+      setReadyCheck(null);
+      sendCountdown(check.positionSeconds);
+      runSyncedCountdown(check.positionSeconds, true);
+    };
+
+    const tick = () => {
+      const currentCheck = readyCheckRef.current;
+      if (!currentCheck) return;
+
+      const elapsedMs = Date.now() - currentCheck.startedAt;
+      const secsLeft = Math.max(0, Math.ceil((READY_CHECK_TIMEOUT_MS - elapsedMs) / 1000));
+      setReadySecondsLeft(secsLeft);
+
+      if (!latestIsHostRef.current) return;
+
+      const expectedParticipants = participants.filter((p) => !p.independentMode);
+      const everyoneReady =
+        expectedParticipants.length > 0 &&
+        expectedParticipants.every((p) => currentCheck.readyClientIds.includes(p.clientId));
+
+      if (everyoneReady || elapsedMs >= READY_CHECK_TIMEOUT_MS) {
+        triggerCountdownFromCheck(currentCheck);
+      }
+    };
+
+    tick();
+    const timer = window.setInterval(tick, 250);
+    return () => window.clearInterval(timer);
+  }, [readyCheck, participants, sendCountdown, runSyncedCountdown]);
 
   // 4. Save Continue Watching progress every 10 seconds during playback and when leaving the room
   useEffect(() => {
@@ -1384,7 +1540,7 @@ export function RoomPage({
     });
   };
 
-  // Broadcast emoji reaction with username (limited to 1 reaction per second per viewer)
+  // Broadcast emoji reaction with username & seat clientId (limited to 1 reaction per second per viewer)
   const handleSendReaction = (emoji: string) => {
     const now = Date.now();
     if (now - lastReactionAtRef.current < REACTION_COOLDOWN_MS) {
@@ -1398,8 +1554,8 @@ export function RoomPage({
 
     const id = makeClientOrEventId('react');
     const sender = safeUsername.trim() || undefined;
-    spawnFloatingReaction(id, emoji, sender);
-    sendReaction({ id, emoji, sender });
+    spawnReaction(id, emoji, sender, myClientId);
+    sendReaction({ id, emoji, sender, clientId: myClientId });
   };
 
   // Manual touch-friendly play/pause control (host controls room; non-host controls local player)
@@ -1431,13 +1587,71 @@ export function RoomPage({
     }
   };
 
-  // Host-only "Start together" 3-2-1 countdown broadcast
+  // Host-only "Start together": opens Ready? check for multi-person rooms, or starts 3-2-1 immediately solo
   const handleStartTogether = () => {
-    if (!isHost || !playerReady) return;
+    if (!isHost || !playerReady || countdownValue !== null || readyCheck) return;
     const targetSeconds = Math.max(0, Math.floor(getCurrentPlayerTime()));
 
+    if (participants.length <= 1) {
+      sendCountdown(targetSeconds);
+      runSyncedCountdown(targetSeconds, true);
+      return;
+    }
+
+    if (getLocalPlayerIsPlaying()) {
+      void commitHostPlaybackUpdate(false, targetSeconds, 'pause', true);
+    }
+    applyRemoteStateToPlayer(false, targetSeconds, true);
+    setLocalIsPlaying(false);
+
+    const checkId = makeClientOrEventId('ready');
+    readyTriggeredCheckIdRef.current = null;
+    setReadySecondsLeft(20);
+    setReadyCheck({
+      checkId,
+      positionSeconds: targetSeconds,
+      startedAt: Date.now(),
+      readyClientIds: [myClientId],
+    });
+    sendReadyCheck('start', checkId, targetSeconds);
+  };
+
+  const handleMarkReady = () => {
+    if (!readyCheck) return;
+    setReadyCheck((prev) => {
+      if (!prev || prev.readyClientIds.includes(myClientId)) return prev;
+      return {
+        ...prev,
+        readyClientIds: [...prev.readyClientIds, myClientId],
+      };
+    });
+    sendReadyCheck('ready', readyCheck.checkId);
+  };
+
+  const handleHostStartNow = () => {
+    if (!isHost || !readyCheck) return;
+    if (readyTriggeredCheckIdRef.current === readyCheck.checkId) return;
+    readyTriggeredCheckIdRef.current = readyCheck.checkId;
+    const targetSeconds = readyCheck.positionSeconds;
+    setReadyCheck(null);
     sendCountdown(targetSeconds);
     runSyncedCountdown(targetSeconds, true);
+  };
+
+  const handleHostCancelReadyCheck = () => {
+    if (!isHost || !readyCheck) return;
+    const checkId = readyCheck.checkId;
+    setReadyCheck(null);
+    sendReadyCheck('cancel', checkId);
+  };
+
+  const handleToggleDimLights = () => {
+    setDimLights((prev) => {
+      const next = !prev;
+      writeSavedDimLights(next);
+      if (!next) setDimOverlayTab(null);
+      return next;
+    });
   };
 
   // Host-only "Sync everyone to me": broadcasts host position/play state without altering host's own playback
@@ -1463,6 +1677,7 @@ export function RoomPage({
     };
     latestServerRoomRef.current = latestRoomRef.current;
     setRoomState({ isPlaying: playing, positionSeconds: pos });
+    setHostDisplayState({ positionSeconds: pos, hostAway: false });
 
     void updateRoomPlayback({
       roomId: latestRoomRef.current.id,
@@ -1479,7 +1694,6 @@ export function RoomPage({
     ownPaceRef.current = true;
     setOwnPace(true);
     initialJoinTargetRef.current = { isPlaying: true, positionSeconds: 0 };
-    setRoomTimeSeconds(0);
     setLocalIsPlaying(true);
     markProgrammaticChange(2500);
     joinChoicePendingRef.current = false;
@@ -1497,7 +1711,10 @@ export function RoomPage({
     };
     setCurrentRoom(targetRoom);
     setRoomState({ isPlaying: hostLive.isPlaying, positionSeconds: hostLive.positionSeconds });
-    setRoomTimeSeconds(hostLive.positionSeconds);
+    setHostDisplayState({
+      positionSeconds: hostLive.positionSeconds,
+      hostAway: hostLive.hostAway,
+    });
     setLocalIsPlaying(hostLive.isPlaying);
     markProgrammaticChange(2500);
     joinChoicePendingRef.current = false;
@@ -1523,7 +1740,10 @@ export function RoomPage({
     ownPaceRef.current = false;
     setOwnPace(false);
     setRoomState({ isPlaying: hostLive.isPlaying, positionSeconds: hostLive.positionSeconds });
-    setRoomTimeSeconds(hostLive.positionSeconds);
+    setHostDisplayState({
+      positionSeconds: hostLive.positionSeconds,
+      hostAway: hostLive.hostAway,
+    });
     setLocalIsPlaying(hostLive.isPlaying);
 
     if (videoChanged) {
@@ -1639,145 +1859,107 @@ export function RoomPage({
 
   const peopleCount = Math.max(1, participants.length);
 
+  const outerSectionClass = isPhoneLandscape
+    ? 'fixed inset-0 z-40 bg-[#070605] overflow-hidden'
+    : dimLights
+      ? 'min-h-screen bg-[#070605] px-3 py-3 sm:px-6 sm:py-5 lg:px-8'
+      : 'h-[100dvh] lg:h-auto lg:min-h-screen flex flex-col lg:block overflow-hidden lg:overflow-visible bg-[#14110f] px-3 py-2 sm:px-5 sm:py-4 lg:px-8 lg:py-5';
+
+  const innerLayoutClass = isPhoneLandscape
+    ? 'relative h-full w-full'
+    : dimLights
+      ? 'mx-auto flex w-full max-w-[1280px] flex-col gap-3'
+      : 'mx-auto flex flex-1 min-h-0 w-full max-w-[1440px] flex-col gap-2 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-x-5 lg:gap-y-3';
+
+  const videoAndSeatsColClass = isPhoneLandscape
+    ? 'h-full w-full'
+    : dimLights
+      ? 'w-full'
+      : 'shrink-0 flex flex-col gap-2 lg:col-start-1 lg:row-start-2 lg:gap-3';
+
+  const videoFrameClass = isPhoneLandscape
+    ? 'relative h-full w-full overflow-hidden bg-[#070605]'
+    : dimLights
+      ? 'relative overflow-hidden rounded-[20px] border border-[#3a322a] bg-[#070605]'
+      : 'relative overflow-hidden rounded-[16px] sm:rounded-[20px] border border-[#3a322a] bg-[#1e1a16]';
+
+  const chatWrapperClass = isPhoneLandscape
+    ? `fixed inset-y-0 right-0 z-50 w-[min(88vw,340px)] p-2 transition-transform duration-200 ${
+        landscapeChatOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+      }`
+    : dimLights
+      ? dimOverlayTab === 'chat'
+        ? 'fixed bottom-16 right-4 z-40 h-[min(68vh,480px)] w-[min(92vw,340px)]'
+        : 'hidden'
+      : 'flex-1 min-h-0 lg:flex-none lg:col-start-2 lg:row-start-2 lg:relative';
+
+  const currentBookmarkId = isArchive
+    ? currentRoom.video_id
+    : video.youtubeId || currentRoom.video_id;
+
   return (
-    <section className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            saveRoomHistoryProgress(false);
-            onBack();
-          }}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] hover:text-[#f2a33a] active:bg-[#2a241e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] cursor-pointer"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          <span>Back to MovieNest</span>
-        </button>
+    <section className={outerSectionClass}>
+      <div className={innerLayoutClass}>
+        {/* Slim top bar (hidden in phone landscape fullscreen) */}
+        {!isPhoneLandscape && (
+          <div className={dimLights ? 'shrink-0' : 'shrink-0 lg:col-start-1 lg:row-start-1'}>
+            <RoomTopBar
+              roomName={currentRoom.name}
+              roomCode={currentRoom.code}
+              isLocked={isLocked}
+              syncStatus={syncStatus}
+              dimLights={dimLights}
+              copied={copied}
+              onBack={() => {
+                saveRoomHistoryProgress(false);
+                onBack();
+              }}
+              onToggleDimLights={handleToggleDimLights}
+              onCopyCode={handleCopyInvite}
+              onInvite={handleShareRoom}
+            />
+          </div>
+        )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-bold tracking-wider text-[#f2a33a] px-1">
-            {currentRoom.code}
-          </span>
+        {/* Laptop right top strip aligned with RoomTopBar (hidden on phone, dimLights, and landscape) */}
+        {!isPhoneLandscape && !dimLights && (
+          <div className="hidden lg:flex lg:col-start-2 lg:row-start-1 items-center justify-between gap-2 min-w-0">
+            <BookmarkButton
+              source={isArchive ? 'archive' : 'youtube'}
+              id={currentBookmarkId}
+              videoUrl={isArchive ? archiveUrl ?? currentRoom.video_url : null}
+              title={displayVideoTitle}
+              thumbnail={currentThumbnail}
+              variant="button"
+            />
 
-          {isHost && (
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-            >
-              <Settings className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-              <span>Room Settings</span>
-            </button>
-          )}
-
-          <BookmarkButton
-            source={isArchive ? 'archive' : 'youtube'}
-            id={isArchive ? currentRoom.video_id : video.youtubeId || currentRoom.video_id}
-            videoUrl={isArchive ? archiveUrl ?? currentRoom.video_url : null}
-            title={displayVideoTitle}
-            thumbnail={currentThumbnail}
-            variant="button"
-          />
-
-          <button
-            type="button"
-            onClick={handleCopyInvite}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-          >
-            {copied ? (
-              <>
-                <Check className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-                <span>Link Copied</span>
-              </>
+            {isHost ? (
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="inline-flex h-11 min-h-[44px] items-center justify-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] whitespace-nowrap transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
+              >
+                <Settings className="h-4 w-4 text-[#f2a33a] shrink-0" aria-hidden="true" />
+                <span>Room Settings</span>
+              </button>
             ) : (
-              <>
-                <Copy className="h-4 w-4" aria-hidden="true" />
-                <span>Copy Invite Link</span>
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleShareRoom}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-4 py-2 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
-          >
-            <Share2 className="h-4 w-4" aria-hidden="true" />
-            <span>Share</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight text-[#f4ece1] sm:text-3xl">
-              {currentRoom.name}
-            </h1>
-            {isHost && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-[#f2a33a]">
-                <Crown className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Host</span>
-              </span>
-            )}
-            {isLocked && (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-[#b9aa98]">
-                <Lock className="h-3 w-3 text-[#f2a33a]" aria-hidden="true" />
-                <span>Locked</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#b9aa98] tabular-nums truncate">
+                <Users className="h-3.5 w-3.5 text-[#f2a33a] shrink-0" aria-hidden="true" />
+                <span>{peopleCount} watching</span>
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-[#b9aa98]">
-            Now playing: <span className="text-[#f4ece1]">{displayVideoTitle}</span>
-            <span className="mx-2" aria-hidden="true">
-              ·
-            </span>
-            <span>{isArchive ? 'Internet Archive' : video.meta}</span>
-          </p>
-        </div>
+        )}
 
-        {/* Live Realtime sync & room presence indicator */}
-        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-[#f4ece1] pt-1">
-          <span className="inline-flex items-center gap-1.5" aria-live="polite">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                syncStatus === 'synced'
-                  ? 'bg-[#f2a33a]'
-                  : syncStatus === 'reconnecting'
-                    ? 'bg-[#b9aa98]'
-                    : 'bg-[#b9aa98]'
-              }`}
-              aria-hidden="true"
-            />
-            <span>
-              {syncStatus === 'synced'
-                ? 'Synced'
-                : syncStatus === 'reconnecting'
-                  ? 'Reconnecting'
-                  : 'Connecting'}
-            </span>
-          </span>
-
-          <span className="text-[#3a322a]" aria-hidden="true">
-            ·
-          </span>
-
-          <span className="inline-flex items-center gap-1.5 tabular-nums text-[#b9aa98]">
-            <Users className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
-            <span>
-              {peopleCount} {peopleCount === 1 ? 'person' : 'people'} in room
-            </span>
-          </span>
-        </div>
-      </div>
-
-      {/* Responsive layout: stacked under video on phones, beside video on laptops */}
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
-        <div className="lg:col-span-8 flex flex-col">
-          {/* Responsive 16:9 Player + floating reactions, toasts, and 3-2-1 countdown overlay */}
-          <div className="relative overflow-hidden rounded-[20px] border border-[#3a322a] bg-[#1e1a16]">
+        {/* Single mounted Video + Seats column (never conditionally unmounts the player across modes) */}
+        <div className={videoAndSeatsColClass}>
+          <div className={videoFrameClass}>
             {joinChoicePending ? (
-              <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-[#14110f] p-6 text-center">
+              <div
+                className={`flex w-full flex-col items-center justify-center gap-2 bg-[#14110f] p-6 text-center ${
+                  isPhoneLandscape ? 'h-full' : 'aspect-video'
+                }`}
+              >
                 <Film className="h-8 w-8 text-[#f2a33a]" aria-hidden="true" />
                 <p className="text-sm font-bold text-[#f4ece1]">{displayVideoTitle}</p>
                 <p className="text-xs text-[#b9aa98]">
@@ -1786,14 +1968,22 @@ export function RoomPage({
               </div>
             ) : isArchive ? (
               archiveLoading ? (
-                <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-[#14110f] p-6 text-center">
+                <div
+                  className={`flex w-full flex-col items-center justify-center gap-2 bg-[#14110f] p-6 text-center ${
+                    isPhoneLandscape ? 'h-full' : 'aspect-video'
+                  }`}
+                >
                   <Film className="h-8 w-8 text-[#f2a33a] animate-pulse" aria-hidden="true" />
                   <p className="text-sm font-medium text-[#f4ece1]">
                     Loading movie from Internet Archive...
                   </p>
                 </div>
               ) : archiveError || !archiveUrl ? (
-                <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 bg-[#14110f] p-6 text-center">
+                <div
+                  className={`flex w-full flex-col items-center justify-center gap-4 bg-[#14110f] p-6 text-center ${
+                    isPhoneLandscape ? 'h-full' : 'aspect-video'
+                  }`}
+                >
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#3a322a] bg-[#1e1a16]">
                     <Film className="h-5 w-5 text-[#f2a33a]" aria-hidden="true" />
                   </div>
@@ -1828,7 +2018,6 @@ export function RoomPage({
 
                     const needsSeekOrPlay = target.positionSeconds > 1 || target.isPlaying;
                     markProgrammaticChange(needsSeekOrPlay ? 2000 : 600);
-                    setRoomTimeSeconds(target.positionSeconds);
                     setLocalIsPlaying(target.isPlaying);
 
                     if (target.positionSeconds > 1) {
@@ -1909,11 +2098,19 @@ export function RoomPage({
                     }
                   }}
                   onError={() => setArchiveError(true)}
-                  className="aspect-video w-full bg-[#14110f]"
+                  className={
+                    isPhoneLandscape
+                      ? 'h-full w-full bg-[#070605] object-contain'
+                      : 'aspect-video w-full bg-[#14110f]'
+                  }
                 />
               )
             ) : embedBlocked ? (
-              <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 bg-[#14110f] p-6 text-center">
+              <div
+                className={`flex w-full flex-col items-center justify-center gap-4 bg-[#14110f] p-6 text-center ${
+                  isPhoneLandscape ? 'h-full' : 'aspect-video'
+                }`}
+              >
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#3a322a] bg-[#1e1a16]">
                   <Lock className="h-5 w-5 text-[#f2a33a]" aria-hidden="true" />
                 </div>
@@ -1948,14 +2145,23 @@ export function RoomPage({
                 </div>
               </div>
             ) : (
-              <div ref={playerMountRef} className="relative aspect-video w-full bg-[#14110f]" />
+              <div
+                ref={playerMountRef}
+                className={
+                  isPhoneLandscape
+                    ? 'relative h-full w-full bg-[#070605]'
+                    : 'relative aspect-video w-full bg-[#14110f]'
+                }
+              />
             )}
 
             {/* Activity & presence toast notices */}
             {toasts.length > 0 && (
               <div
                 aria-live="polite"
-                className="pointer-events-none absolute left-3 top-3 z-20 flex flex-col gap-1.5"
+                className={`pointer-events-none absolute left-3 z-20 flex flex-col gap-1.5 ${
+                  isPhoneLandscape ? 'top-16' : 'top-3'
+                }`}
               >
                 {toasts.map((toast) => (
                   <div
@@ -1968,23 +2174,8 @@ export function RoomPage({
               </div>
             )}
 
-            {/* 3, 2, 1 synchronized countdown overlay */}
-            {countdownValue !== null && (
-              <div
-                aria-live="assertive"
-                className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center bg-[#14110f]/85"
-              >
-                <p className="text-xs font-bold uppercase tracking-widest text-[#f4ece1]">
-                  Starting together in
-                </p>
-                <span className="mt-1 text-7xl sm:text-8xl font-bold text-[#f2a33a] tabular-nums">
-                  {countdownValue}
-                </span>
-              </div>
-            )}
-
-            {/* Floating emoji reactions overlay */}
-            {floatingReactions.length > 0 && (
+            {/* Floating reactions overlay on video when seats strip is collapsed (landscape or Dim the Lights) */}
+            {(isPhoneLandscape || dimLights) && floatingReactions.length > 0 && (
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
@@ -2007,155 +2198,185 @@ export function RoomPage({
                 ))}
               </div>
             )}
-            {/* Own pace banner attached below the video frame for non-hosts */}
-            {!isHost && ownPace && !joinChoicePending && (
+
+            {/* Ready Check ("Ready?") prompt overlay */}
+            {readyCheck && !joinChoicePending && (
+              <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-[#14110f]/80 p-3">
+                <ReadyCheckPrompt
+                  isHost={isHost}
+                  hasMarkedReady={readyCheck.readyClientIds.includes(myClientId)}
+                  readyCount={readyCheck.readyClientIds.length}
+                  totalCount={Math.max(1, participants.filter((p) => !p.independentMode).length)}
+                  secondsRemaining={readySecondsLeft}
+                  onMarkReady={handleMarkReady}
+                  onHostStartNow={handleHostStartNow}
+                  onHostCancel={handleHostCancelReadyCheck}
+                />
+              </div>
+            )}
+
+            {/* 3, 2, 1 synchronized countdown overlay */}
+            {countdownValue !== null && (
               <div
-                role="status"
-                className="flex flex-wrap items-center justify-between gap-2 border-t border-[#3a322a] bg-[#1e1a16] px-4 py-2.5 text-xs text-[#f4ece1]"
+                aria-live="assertive"
+                className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center bg-[#14110f]/85"
               >
-                <span>You&apos;re on your own pace · Sync to host</span>
+                <p className="text-xs font-bold uppercase tracking-widest text-[#f4ece1]">
+                  Starting together in
+                </p>
+                <span className="mt-1 text-7xl sm:text-8xl font-bold text-[#f2a33a] tabular-nums">
+                  {countdownValue}
+                </span>
+              </div>
+            )}
+
+            {/* Phone landscape overlay controls: compact reaction row top-left + Chat drawer trigger top-right */}
+            {isPhoneLandscape && (
+              <>
+                <div className="absolute left-3 top-3 z-30 max-w-[calc(100%-116px)]">
+                  <RoomReactionBar
+                    compactOverlay
+                    onSendReaction={handleSendReaction}
+                    reactionNote={reactionNote}
+                  />
+                </div>
+
                 <button
                   type="button"
-                  onClick={handleSyncToHost}
-                  disabled={syncingToHost}
-                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-[#f2a33a] px-4 py-1.5 text-xs font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
+                  onClick={() => setLandscapeChatOpen((open) => !open)}
+                  aria-expanded={landscapeChatOpen}
+                  className="absolute right-3 top-3 z-30 inline-flex h-11 min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f]/95 px-4 text-xs font-bold text-[#f4ece1] transition-colors hover:border-[#f2a33a] cursor-pointer"
                 >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 ${syncingToHost ? 'animate-spin' : ''}`}
-                    aria-hidden="true"
-                  />
-                  <span>{syncingToHost ? 'Syncing...' : 'Sync to host'}</span>
+                  <MessageSquare className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                  <span>Chat</span>
                 </button>
-              </div>
+              </>
             )}
           </div>
 
-          {/* Playback controls + live time + reaction buttons */}
-          <div className="mt-4 flex flex-col gap-3 rounded-[20px] border border-[#3a322a] bg-[#1e1a16] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                {!(embedBlocked || archiveError) && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleTogglePlayPause}
-                      disabled={!playerReady}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-5 py-2 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      {localIsPlaying ? (
-                        <>
-                          <Pause className="h-4 w-4 fill-current" aria-hidden="true" />
-                          <span>{isHost ? 'Pause for All' : 'Pause'}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Play className="h-4 w-4 fill-current" aria-hidden="true" />
-                          <span>{isHost ? 'Play for All' : 'Play'}</span>
-                        </>
-                      )}
-                    </button>
+          {/* Seats panel under the video (visible in normal portrait & laptop mode) */}
+          {!isPhoneLandscape && !dimLights && (
+            <RoomSeatsPanel
+              participants={participants}
+              isHost={isHost}
+              playerReady={playerReady}
+              localIsPlaying={localIsPlaying}
+              ownPace={ownPace}
+              hostLiveSeconds={hostDisplayState.positionSeconds}
+              hostAway={hostDisplayState.hostAway}
+              syncingToHost={syncingToHost}
+              readyClientIds={readyCheck ? readyCheck.readyClientIds : null}
+              readyCheckActive={Boolean(readyCheck)}
+              countdownActive={countdownValue !== null}
+              embedOrArchiveBlocked={embedBlocked || archiveError}
+              seatReactions={seatReactions}
+              formatTime={formatSeconds}
+              onTogglePlayPause={handleTogglePlayPause}
+              onSyncEveryoneToMe={handleSyncEveryoneToMe}
+              onStartTogether={handleStartTogether}
+              onSyncToHost={handleSyncToHost}
+              onChangeVideo={() => setPickerOpen(true)}
+            />
+          )}
+        </div>
 
-                    {isHost ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={handleSyncEveryoneToMe}
-                          disabled={!playerReady}
-                          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-45 cursor-pointer"
-                        >
-                          <RefreshCw className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
-                          <span>Sync everyone to me</span>
-                        </button>
+        {/* Phone portrait reactions row + compact Bookmark, Queue & Host Settings triggers */}
+        {!isPhoneLandscape && !dimLights && (
+          <div className="flex shrink-0 items-center justify-between gap-2 lg:hidden">
+            <RoomReactionBar
+              className="flex-1 min-w-0"
+              onSendReaction={handleSendReaction}
+              reactionNote={reactionNote}
+            />
 
-                        <button
-                          type="button"
-                          onClick={handleStartTogether}
-                          disabled={!playerReady || countdownValue !== null}
-                          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-45 cursor-pointer"
-                        >
-                          <Timer className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
-                          <span>Start together</span>
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleSyncToHost}
-                        disabled={!playerReady || syncingToHost}
-                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
-                      >
-                        <RefreshCw
-                          className={`h-3.5 w-3.5 text-[#f2a33a] ${syncingToHost ? 'animate-spin' : ''}`}
-                          aria-hidden="true"
-                        />
-                        <span>{syncingToHost ? 'Syncing...' : 'Sync to host'}</span>
-                      </button>
-                    )}
-                  </>
-                )}
+            <div className="flex shrink-0 items-center gap-1.5">
+              <BookmarkButton
+                source={isArchive ? 'archive' : 'youtube'}
+                id={currentBookmarkId}
+                videoUrl={isArchive ? archiveUrl ?? currentRoom.video_url : null}
+                title={displayVideoTitle}
+                thumbnail={currentThumbnail}
+                variant="icon"
+              />
 
-                {isHost && (
-                  <button
-                    type="button"
-                    onClick={() => setPickerOpen(true)}
-                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-                  >
-                    <Video className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
-                    <span>Change video</span>
-                  </button>
-                )}
-
-                <span className="font-mono text-xs text-[#b9aa98] tabular-nums px-1">
-                  {isHost
-                    ? 'Room time'
-                    : ownPace
-                      ? 'Own pace'
-                      : 'Following host'}{' '}
-                  · {formatSeconds(roomTimeSeconds)}
-                </span>
-              </div>
-
-              {!isHost && (
-                <p className="inline-flex items-center gap-1.5 text-xs text-[#b9aa98]">
-                  <Crown className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
-                  <span>
-                    {ownPace
-                      ? "You're on your own pace · Your controls only affect you"
-                      : 'Host controls room playback · Pausing or seeking switches to your own pace'}
-                  </span>
-                </p>
-              )}
-            </div>
-
-            {/* Room reactions bar (1 reaction per second per viewer) */}
-            <div className="flex flex-col items-start gap-1 sm:items-end shrink-0">
-              <div
-                role="group"
-                aria-label="Send a reaction to the room"
-                className="flex flex-wrap items-center gap-1.5"
+              <button
+                type="button"
+                onClick={() => setMobileQueueOpen(true)}
+                aria-label={`Open Up Next queue (${queue.length})`}
+                className="inline-flex h-11 min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-2.5 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
               >
-                {REACTION_EMOJIS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => handleSendReaction(emoji)}
-                    aria-label={`React with ${emoji}`}
-                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-lg transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-              {reactionNote && (
-                <p className="text-[11px] text-[#b9aa98]" role="status">
-                  {reactionNote}
-                </p>
+                <ListVideo className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                {queue.length > 0 && (
+                  <span className="font-mono text-xs tabular-nums">{queue.length}</span>
+                )}
+              </button>
+
+              {isHost && (
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  aria-label="Room Settings"
+                  className="inline-flex h-11 w-11 min-h-[44px] items-center justify-center rounded-full border border-[#3a322a] bg-[#1e1a16] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
+                >
+                  <Settings className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                </button>
               )}
             </div>
           </div>
+        )}
 
-          {/* Desktop/Laptop Up Next queue under the player */}
-          <div className="mt-5 hidden lg:block">
+        {/* Single mounted Room Chat panel (matches Video+Seats height on laptop, fills remaining portrait screen, slides in on landscape, overlays on Dim the Lights) */}
+        <div className={chatWrapperClass}>
+          <div className={!isPhoneLandscape && !dimLights ? 'h-full lg:absolute lg:inset-0' : 'h-full'}>
+            <RoomChat
+              fillHeight
+              messages={chatMessages}
+              loading={chatLoading}
+              loadError={chatError}
+              username={safeUsername}
+              onSendMessage={sendChatMessage}
+              onRequestUsername={onRequestUsername}
+              onCloseDrawer={
+                isPhoneLandscape
+                  ? () => setLandscapeChatOpen(false)
+                  : dimLights
+                    ? () => setDimOverlayTab(null)
+                    : undefined
+              }
+            />
+          </div>
+        </div>
+
+        {/* Dim the Lights reaction bar under the wide video */}
+        {dimLights && !isPhoneLandscape && (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <RoomReactionBar
+              onSendReaction={handleSendReaction}
+              reactionNote={reactionNote}
+            />
+            <p className="truncate text-xs text-[#b9aa98]">
+              Now playing: <span className="font-medium text-[#f4ece1]">{displayVideoTitle}</span>
+            </p>
+          </div>
+        )}
+
+        {/* Laptop left column row 3: reaction bar + Now playing + Up Next queue */}
+        {!isPhoneLandscape && !dimLights && (
+          <div className="hidden lg:flex lg:col-start-1 lg:row-start-3 flex-col gap-4 pt-1">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <RoomReactionBar
+                onSendReaction={handleSendReaction}
+                reactionNote={reactionNote}
+              />
+              <p className="truncate text-xs text-[#b9aa98]">
+                Now playing: <span className="font-medium text-[#f4ece1]">{displayVideoTitle}</span>
+                <span className="mx-1.5" aria-hidden="true">
+                  ·
+                </span>
+                <span>{isArchive ? 'Internet Archive' : video.meta}</span>
+              </p>
+            </div>
+
             <RoomQueuePanel
               queue={queue}
               isHost={isHost}
@@ -2166,103 +2387,120 @@ export function RoomPage({
               onRemoveItem={handleRemoveQueuedItem}
             />
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Right column: Desktop shows Who's Here + Room Chat; Phones show Chat / People / Queue tabs */}
-        <div className="lg:col-span-4 space-y-4">
-          {/* Phone/tablet segmented tabs so the screen stays compact */}
-          <div className="lg:hidden">
-            <div
-              role="tablist"
-              aria-label="Room panels"
-              className="mb-3 grid grid-cols-3 gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] p-1"
+      {/* Dim the Lights corner peek buttons + Seats overlay */}
+      {dimLights && !isPhoneLandscape && (
+        <>
+          <div className="fixed bottom-4 right-4 z-30 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDimOverlayTab((tab) => (tab === 'seats' ? null : 'seats'))}
+              aria-expanded={dimOverlayTab === 'seats'}
+              className={`inline-flex h-11 min-h-[44px] items-center gap-1.5 rounded-full border px-4 text-xs font-bold transition-colors cursor-pointer ${
+                dimOverlayTab === 'seats'
+                  ? 'border-[#f2a33a] bg-[#f2a33a] text-[#1a1208]'
+                  : 'border-[#3a322a] bg-[#1e1a16] text-[#f4ece1] hover:border-[#f2a33a]'
+              }`}
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === 'chat'}
-                onClick={() => setMobileTab('chat')}
-                className={`inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs transition-colors cursor-pointer ${
-                  mobileTab === 'chat'
-                    ? 'bg-[#f2a33a] font-bold text-[#1a1208]'
-                    : 'font-medium text-[#b9aa98] hover:text-[#f4ece1]'
-                }`}
-              >
-                <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Chat</span>
-              </button>
+              <Users className="h-4 w-4" aria-hidden="true" />
+              <span>Seats ({peopleCount})</span>
+            </button>
 
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === 'people'}
-                onClick={() => setMobileTab('people')}
-                className={`inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs transition-colors cursor-pointer ${
-                  mobileTab === 'people'
-                    ? 'bg-[#f2a33a] font-bold text-[#1a1208]'
-                    : 'font-medium text-[#b9aa98] hover:text-[#f4ece1]'
-                }`}
-              >
-                <Users className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>People ({peopleCount})</span>
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobileTab === 'queue'}
-                onClick={() => setMobileTab('queue')}
-                className={`inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs transition-colors cursor-pointer ${
-                  mobileTab === 'queue'
-                    ? 'bg-[#f2a33a] font-bold text-[#1a1208]'
-                    : 'font-medium text-[#b9aa98] hover:text-[#f4ece1]'
-                }`}
-              >
-                <ListVideo className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Queue ({queue.length})</span>
-              </button>
-            </div>
-
-            {mobileTab === 'chat' && (
-              <RoomChat
-                messages={chatMessages}
-                loading={chatLoading}
-                loadError={chatError}
-                username={safeUsername}
-                onSendMessage={sendChatMessage}
-                onRequestUsername={onRequestUsername}
-                inMobileTab
-              />
-            )}
-            {mobileTab === 'people' && <RoomPeopleList participants={participants} />}
-            {mobileTab === 'queue' && (
-              <RoomQueuePanel
-                queue={queue}
-                isHost={isHost}
-                canControlPlayback={isHost}
-                busyItemId={queueBusyId}
-                onOpenPicker={() => setPickerOpen(true)}
-                onPlayQueuedItem={handlePlayQueuedItem}
-                onRemoveItem={handleRemoveQueuedItem}
-                inMobileTab
-              />
-            )}
+            <button
+              type="button"
+              onClick={() => setDimOverlayTab((tab) => (tab === 'chat' ? null : 'chat'))}
+              aria-expanded={dimOverlayTab === 'chat'}
+              className={`inline-flex h-11 min-h-[44px] items-center gap-1.5 rounded-full border px-4 text-xs font-bold transition-colors cursor-pointer ${
+                dimOverlayTab === 'chat'
+                  ? 'border-[#f2a33a] bg-[#f2a33a] text-[#1a1208]'
+                  : 'border-[#3a322a] bg-[#1e1a16] text-[#f4ece1] hover:border-[#f2a33a]'
+              }`}
+            >
+              <MessageSquare className="h-4 w-4" aria-hidden="true" />
+              <span>Chat</span>
+            </button>
           </div>
 
-          {/* Desktop/Laptop side column: Who's Here + Room Chat */}
-          <div className="hidden lg:flex lg:flex-col lg:gap-4">
-            <RoomPeopleList participants={participants} compact />
-            <RoomChat
-              messages={chatMessages}
-              loading={chatLoading}
-              loadError={chatError}
-              username={safeUsername}
-              onSendMessage={sendChatMessage}
-              onRequestUsername={onRequestUsername}
+          {dimOverlayTab === 'seats' && (
+            <div className="fixed bottom-16 right-4 z-40 w-[min(94vw,760px)] space-y-2">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDimOverlayTab(null)}
+                  aria-label="Close seats"
+                  className="inline-flex h-11 min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] hover:border-[#f2a33a] cursor-pointer"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                  <span>Close seats</span>
+                </button>
+              </div>
+              <RoomSeatsPanel
+                participants={participants}
+                isHost={isHost}
+                playerReady={playerReady}
+                localIsPlaying={localIsPlaying}
+                ownPace={ownPace}
+                hostLiveSeconds={hostDisplayState.positionSeconds}
+                hostAway={hostDisplayState.hostAway}
+                syncingToHost={syncingToHost}
+                readyClientIds={readyCheck ? readyCheck.readyClientIds : null}
+                readyCheckActive={Boolean(readyCheck)}
+                countdownActive={countdownValue !== null}
+                embedOrArchiveBlocked={embedBlocked || archiveError}
+                seatReactions={seatReactions}
+                formatTime={formatSeconds}
+                onTogglePlayPause={handleTogglePlayPause}
+                onSyncEveryoneToMe={handleSyncEveryoneToMe}
+                onStartTogether={handleStartTogether}
+                onSyncToHost={handleSyncToHost}
+                onChangeVideo={() => setPickerOpen(true)}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Mobile Portrait Up Next Queue modal sheet */}
+      {mobileQueueOpen && !isPhoneLandscape && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Up Next queue"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[#14110f]/85 p-3 lg:hidden"
+        >
+          <div className="w-full max-w-md space-y-2">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMobileQueueOpen(false)}
+                aria-label="Close queue"
+                className="inline-flex h-11 min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] hover:border-[#f2a33a] cursor-pointer"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+                <span>Close</span>
+              </button>
+            </div>
+            <RoomQueuePanel
+              queue={queue}
+              isHost={isHost}
+              canControlPlayback={isHost}
+              busyItemId={queueBusyId}
+              onOpenPicker={() => {
+                setMobileQueueOpen(false);
+                setPickerOpen(true);
+              }}
+              onPlayQueuedItem={(item) => {
+                setMobileQueueOpen(false);
+                void handlePlayQueuedItem(item);
+              }}
+              onRemoveItem={handleRemoveQueuedItem}
+              inMobileTab
             />
           </div>
         </div>
-      </div>
+      )}
 
       <RoomSettingsModal
         open={settingsOpen && isHost}

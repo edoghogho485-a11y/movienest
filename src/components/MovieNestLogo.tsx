@@ -1,10 +1,15 @@
 // Inline SVG logo: two play triangles side by side (amber + cream, slightly offset) next to "MovieNest"
 interface MovieNestLogoProps {
   compact?: boolean;
+  hideWordmarkOnMobile?: boolean;
   className?: string;
 }
 
-export function MovieNestLogo({ compact = false, className = '' }: MovieNestLogoProps) {
+export function MovieNestLogo({
+  compact = false,
+  hideWordmarkOnMobile = false,
+  className = '',
+}: MovieNestLogoProps) {
   return (
     <span className={`inline-flex items-center gap-2 select-none ${className}`}>
       <svg
@@ -30,7 +35,7 @@ export function MovieNestLogo({ compact = false, className = '' }: MovieNestLogo
       <span
         className={`font-bold tracking-tight text-[#f4ece1] whitespace-nowrap ${
           compact ? 'text-base sm:text-lg' : 'text-lg'
-        }`}
+        } ${hideWordmarkOnMobile ? 'hidden sm:inline' : ''}`}
       >
         MovieNest
       </span>

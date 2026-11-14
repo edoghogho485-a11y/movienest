@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { AtSign, Send } from 'lucide-react';
+import { AtSign, Send, X } from 'lucide-react';
 import { CHAT_MESSAGE_MAX_LENGTH, RoomMessage } from '../lib/supabase';
 
 const CHAT_COOLDOWN_MS = 1000;
@@ -11,7 +11,9 @@ interface RoomChatProps {
   username: string;
   onSendMessage: (body: string) => Promise<{ ok: boolean; error: string | null }>;
   onRequestUsername?: () => void;
-  inMobileTab?: boolean;
+  fillHeight?: boolean;
+  onCloseDrawer?: () => void;
+  className?: string;
 }
 
 function formatMessageTime(isoDate: string): string {
@@ -27,7 +29,9 @@ export function RoomChat({
   username,
   onSendMessage,
   onRequestUsername,
-  inMobileTab = false,
+  fillHeight = false,
+  onCloseDrawer,
+  className = '',
 }: RoomChatProps) {
   const safeMessages = Array.isArray(messages) ? messages : [];
   const safeUsername = typeof username === 'string' ? username.trim() : '';
@@ -93,22 +97,35 @@ export function RoomChat({
   return (
     <aside
       aria-label="Room chat"
-      className={`flex flex-col overflow-hidden rounded-[20px] border border-[#3a322a] bg-[#1e1a16] ${
-        inMobileTab ? 'h-[380px]' : 'h-[380px] lg:h-[460px]'
-      }`}
+      className={`flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-[#3a322a] bg-[#1e1a16] ${
+        fillHeight ? 'h-full' : 'h-[420px]'
+      } ${className}`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-[#3a322a] px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#3a322a] px-4 py-2.5">
         <h2 className="text-sm font-bold text-[#f4ece1]">
-          Room Chat
+          Room chat
         </h2>
-        {safeUsername && (
-          <span className="truncate text-xs text-[#b9aa98]">
-            Chatting as <span className="font-bold text-[#f2a33a]">@{safeUsername}</span>
-          </span>
-        )}
+
+        <div className="flex items-center gap-2 min-w-0">
+          {safeUsername && (
+            <span className="truncate text-xs text-[#b9aa98]">
+              <span className="font-bold text-[#f2a33a]">@{safeUsername}</span>
+            </span>
+          )}
+          {onCloseDrawer && (
+            <button
+              type="button"
+              onClick={onCloseDrawer}
+              aria-label="Close chat"
+              className="flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full text-[#b9aa98] transition-colors hover:bg-[#2a241e] hover:text-[#f4ece1] cursor-pointer"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
 
-      <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3.5">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 py-3">
         {loading ? (
           <p className="text-xs text-[#b9aa98]">Loading messages...</p>
         ) : safeMessages.length === 0 ? (
@@ -132,7 +149,7 @@ export function RoomChat({
                     {formatMessageTime(msg.created_at)}
                   </span>
                 </div>
-                <p className="break-words text-sm leading-snug text-[#f4ece1]/90">
+                <p className="break-words text-sm leading-snug text-[#f4ece1]/95">
                   {msg.body}
                 </p>
               </div>
@@ -141,7 +158,7 @@ export function RoomChat({
         )}
       </div>
 
-      <div className="border-t border-[#3a322a] bg-[#14110f] p-3">
+      <div className="shrink-0 border-t border-[#3a322a] bg-[#14110f] p-2.5 sm:p-3">
         {!safeUsername ? (
           <button
             type="button"

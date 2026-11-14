@@ -46,8 +46,27 @@
   }
 }
 
+@keyframes float-seat-reaction {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 4px) scale(0.85);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -14px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -76px) scale(1.15);
+  }
+}
+
 .animate-float-reaction {
   animation: float-reaction 2.2s ease-out forwards;
+}
+
+.animate-float-seat-reaction {
+  animation: float-seat-reaction 2s ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -55,7 +74,8 @@
     scroll-behavior: auto;
   }
 
-  .animate-float-reaction {
+  .animate-float-reaction,
+  .animate-float-seat-reaction {
     animation-duration: 1.2s;
   }
 }

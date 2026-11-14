@@ -880,6 +880,10 @@ export default function App() {
     });
   };
 
+  const isRoomView = Boolean(
+    activeRoom && !roomLoading && !roomNotFoundCode && !roomLockedCode
+  );
+
   const showBrowseContent =
     !roomLoading &&
     !roomNotFoundCode &&
@@ -889,29 +893,36 @@ export default function App() {
     !seeAllData;
 
   return (
-    <div id="top" className="min-h-screen bg-[#14110f] text-[#f4ece1] flex pb-16 lg:pb-0">
-      <Sidebar activeNav={activeNav} onSelectNav={handleSelectNav} />
+    <div
+      id="top"
+      className={`min-h-screen bg-[#14110f] text-[#f4ece1] flex ${
+        isRoomView ? '' : 'pb-16 lg:pb-0'
+      }`}
+    >
+      {!isRoomView && <Sidebar activeNav={activeNav} onSelectNav={handleSelectNav} />}
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <TopBar
-          searchQuery={searchQuery}
-          searching={searching}
-          userProfile={userProfile}
-          usernameLoading={usernameLoading}
-          onSearchSubmit={handleSearchSubmit}
-          onClearSearch={handleClearSearch}
-          onCreateRoom={() => openCreateRoom()}
-          onJoinRoom={openJoinRoom}
-          onHomeClick={handleGoHome}
-          onOpenClaimUsername={() => {
-            setUsernameModalDismissible(true);
-            setUsernameModalMode('claim');
-          }}
-          onOpenChangeUsername={() => {
-            setUsernameModalDismissible(true);
-            setUsernameModalMode('change');
-          }}
-        />
+        {!isRoomView && (
+          <TopBar
+            searchQuery={searchQuery}
+            searching={searching}
+            userProfile={userProfile}
+            usernameLoading={usernameLoading}
+            onSearchSubmit={handleSearchSubmit}
+            onClearSearch={handleClearSearch}
+            onCreateRoom={() => openCreateRoom()}
+            onJoinRoom={openJoinRoom}
+            onHomeClick={handleGoHome}
+            onOpenClaimUsername={() => {
+              setUsernameModalDismissible(true);
+              setUsernameModalMode('claim');
+            }}
+            onOpenChangeUsername={() => {
+              setUsernameModalDismissible(true);
+              setUsernameModalMode('change');
+            }}
+          />
+        )}
 
         <main className="flex-1">
           {roomLoading ? (
@@ -1389,40 +1400,42 @@ export default function App() {
           )}
         </main>
 
-        <footer className="mt-10 border-t border-[#3a322a]">
-          <div className="flex flex-col items-start justify-between gap-4 px-4 py-6 text-sm text-[#b9aa98] sm:flex-row sm:items-center sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-1.5">
-              <MovieNestLogo />
-              <p className="text-xs text-[#b9aa98]">
-                MovieNest doesn&apos;t host any videos. Videos stream from YouTube and the Internet Archive.
-              </p>
-            </div>
+        {!isRoomView && (
+          <footer className="mt-10 border-t border-[#3a322a]">
+            <div className="flex flex-col items-start justify-between gap-4 px-4 py-6 text-sm text-[#b9aa98] sm:flex-row sm:items-center sm:px-6 lg:px-8">
+              <div className="flex flex-col gap-1.5">
+                <MovieNestLogo />
+                <p className="text-xs text-[#b9aa98]">
+                  MovieNest doesn&apos;t host any videos. Videos stream from YouTube and the Internet Archive.
+                </p>
+              </div>
 
-            <nav aria-label="Footer links" className="flex flex-wrap items-center gap-5">
-              <a
-                href="/about.html"
-                className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
-              >
-                About
-              </a>
-              <a
-                href="/terms.html"
-                className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
-              >
-                Terms
-              </a>
-              <a
-                href="/privacy.html"
-                className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
-              >
-                Privacy
-              </a>
-            </nav>
-          </div>
-        </footer>
+              <nav aria-label="Footer links" className="flex flex-wrap items-center gap-5">
+                <a
+                  href="/about.html"
+                  className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
+                >
+                  About
+                </a>
+                <a
+                  href="/terms.html"
+                  className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
+                >
+                  Terms
+                </a>
+                <a
+                  href="/privacy.html"
+                  className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
+                >
+                  Privacy
+                </a>
+              </nav>
+            </div>
+          </footer>
+        )}
       </div>
 
-      <MobileBottomNav activeNav={activeNav} onSelectNav={handleSelectNav} />
+      {!isRoomView && <MobileBottomNav activeNav={activeNav} onSelectNav={handleSelectNav} />}
 
       <WatchChoiceModal
         video={choiceVideo}

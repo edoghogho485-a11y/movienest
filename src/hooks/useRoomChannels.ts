@@ -12,6 +12,15 @@ import {
 
 export type RoomSyncStatus = 'connecting' | 'synced' | 'reconnecting';
 export type RoomActivityAction = 'play' | 'pause' | 'seek' | 'video';
+export type ReadyCheckAction = 'start' | 'ready' | 'cancel';
+
+export interface ReadyCheckEventPayload {
+  action: ReadyCheckAction;
+  checkId: string;
+  clientId: string;
+  name?: string;
+  positionSeconds?: number;
+}
 
 interface UseRoomChannelsParams {
   roomId: string;
@@ -20,7 +29,12 @@ interface UseRoomChannelsParams {
   isHost: boolean;
   independentMode: boolean;
   onRoomUpdated: (updated: RoomRecord) => void;
-  onReactionReceived: (payload: { id: string; emoji: string; sender?: string }) => void;
+  onReactionReceived: (payload: {
+    id: string;
+    emoji: string;
+    sender?: string;
+    clientId?: string;
+  }) => void;
   onActivityReceived: (payload: {
     actor: string;
     action: RoomActivityAction;
@@ -28,6 +42,7 @@ interface UseRoomChannelsParams {
   }) => void;
   onCountdownReceived: (positionSeconds: number) => void;
   onHostSyncReceived: (payload: { positionSeconds: number; isPlaying: boolean }) => void;
+  onReadyCheckReceived: (payload: ReadyCheckEventPayload) => void;
   onPresenceNotice: (text: string) => void;
 }
 
@@ -50,6 +65,7 @@ export function useRoomChannels({
   onActivityReceived,
   onCountdownReceived,
   onHostSyncReceived,
+  onReadyCheckReceived,
   onPresenceNotice,
 }: UseRoomChannelsParams) {
   const cleanRoomCode = typeof roomCode === 'string' ? roomCode.trim().toUpperCase() : '';
@@ -92,6 +108,8 @@ export function useRoomChannels({
   onCountdownReceivedRef.current = onCountdownReceived;
   const onHostSyncReceivedRef = useRef(onHostSyncReceived);
   onHostSyncReceivedRef.current = onHostSyncReceived;
+  const onReadyCheckReceivedRef = useRef(onReadyCheckReceived);
+  onReadyCheckReceivedRef.current = onReadyCheckReceived;
   const onPresenceNoticeRef = useRef(onPresenceNotice);
   onPresenceNoticeRef.current = onPresenceNotice;
 
@@ -269,12 +287,18 @@ export function useRoomChannels({
       liveChannel
         .on('broadcast', { event: 'reaction' }, ({ payload }) => {
           if (!isEffectActive) return;
-          const data = payload as { id?: string; emoji?: string; sender?: string } | null;
+          const data = payload as {
+            id?: string;
+            emoji?: string;
+            sender?: string;
+            clientId?: string;
+          } | null;
           if (data?.id && data?.emoji) {
             onReactionReceivedRef.current({
               id: data.id,
               emoji: data.emoji,
               sender: data.sender,
+              clientId: data.clientId,
             });
           }
         })
@@ -315,6 +339,22 @@ export function useRoomChannels({
           onHostSyncReceivedRef.current({
             positionSeconds: Math.max(0, data.positionSeconds ?? 0),
             isPlaying: Boolean(data.isPlaying),
+          });
+        })
+        .on('broadcast', { event: 'ready_check' }, ({ payload }) => {
+          if (!isEffectActive) return;
+          const data = payload as Partial<ReadyCheckEventPayload> | null;
+          if (!data || !data.action || !data.checkId || !data.clientId) return;
+          if (data.clientId === clientIdRef.current) return;
+          onReadyCheckReceivedRef.current({
+            action: data.action,
+            checkId: data.checkId,
+            clientId: data.clientId,
+            name: typeof data.name === 'string' ? data.name : undefined,
+            positionSeconds:
+              typeof data.positionSeconds === 'number'
+                ? Math.max(0, data.positionSeconds)
+                : undefined,
           });
         })
         .on('presence', { event: 'sync' }, () => {
@@ -475,11 +515,14 @@ export function useRoomChannels({
   );
 
   const sendReaction = useCallback(
-    (payload: { id: string; emoji: string; sender?: string }) => {
+    (payload: { id: string; emoji: string; sender?: string; clientId?: string }) => {
       void liveChannelRef.current?.send({
         type: 'broadcast',
         event: 'reaction',
-        payload,
+        payload: {
+          ...payload,
+          clientId: payload.clientId ?? clientIdRef.current,
+        },
       });
     },
     []
@@ -526,7 +569,28 @@ export function useRoomChannels({
     });
   }, []);
 
+  const sendReadyCheck = useCallback(
+    (action: ReadyCheckAction, checkId: string, positionSeconds?: number) => {
+      void liveChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'ready_check',
+        payload: {
+          action,
+          checkId,
+          clientId: clientIdRef.current,
+          name: usernameRef.current || 'Guest',
+          positionSeconds:
+            typeof positionSeconds === 'number'
+              ? Math.max(0, Math.floor(positionSeconds))
+              : undefined,
+        },
+      });
+    },
+    []
+  );
+
   return {
+    myClientId: clientIdRef.current,
     syncStatus,
     participants,
     messages,
@@ -537,5 +601,6 @@ export function useRoomChannels({
     sendActivity,
     sendCountdown,
     sendHostSync,
+    sendReadyCheck,
   };
 }
