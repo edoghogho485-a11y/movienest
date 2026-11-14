@@ -271,7 +271,7 @@ export async function createRoomInSupabase(params: {
         is_playing: false,
         position_seconds: startSeconds,
         host_id: hostId,
-        controls: 'everyone',
+        controls: 'host',
         locked: false,
         queue: [],
       })
@@ -357,16 +357,14 @@ export async function updateRoomPlayback(params: {
   };
 }
 
-// Host-only: save room control permissions and lock state
+// Host-only: save room lock state
 export async function updateRoomSettings(params: {
   roomId: string;
-  controls: RoomControlsMode;
   locked: boolean;
 }): Promise<{ error: string | null }> {
   const { error } = await supabase
     .from('rooms')
     .update({
-      controls: params.controls,
       locked: params.locked,
     })
     .eq('id', params.roomId);

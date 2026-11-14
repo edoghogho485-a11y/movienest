@@ -1,37 +1,29 @@
 import { useEffect, useState } from 'react';
-import { Lock, Settings, Unlock, Users, X } from 'lucide-react';
-import { RoomControlsMode } from '../lib/supabase';
+import { Lock, Settings, Unlock, X } from 'lucide-react';
 
 interface RoomSettingsModalProps {
   open: boolean;
-  controls: RoomControlsMode;
   locked: boolean;
   onClose: () => void;
-  onSaveSettings: (next: {
-    controls: RoomControlsMode;
-    locked: boolean;
-  }) => Promise<string | null>;
+  onSaveSettings: (next: { locked: boolean }) => Promise<string | null>;
 }
 
 export function RoomSettingsModal({
   open,
-  controls,
   locked,
   onClose,
   onSaveSettings,
 }: RoomSettingsModalProps) {
-  const [draftControls, setDraftControls] = useState<RoomControlsMode>(controls);
   const [draftLocked, setDraftLocked] = useState<boolean>(locked);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     if (open) {
-      setDraftControls(controls);
       setDraftLocked(locked);
       setErrorMsg('');
     }
-  }, [open, controls, locked]);
+  }, [open, locked]);
 
   useEffect(() => {
     if (!open) return;
@@ -44,30 +36,18 @@ export function RoomSettingsModal({
 
   if (!open) return null;
 
-  const persist = async (nextControls: RoomControlsMode, nextLocked: boolean) => {
-    setSaving(true);
-    setErrorMsg('');
-    const err = await onSaveSettings({
-      controls: nextControls,
-      locked: nextLocked,
-    });
-    setSaving(false);
-    if (err) {
-      setErrorMsg(err);
-    }
-  };
-
-  const handleSelectControls = (mode: RoomControlsMode) => {
-    if (mode === draftControls || saving) return;
-    setDraftControls(mode);
-    void persist(mode, draftLocked);
-  };
-
-  const handleToggleLock = () => {
+  const handleToggleLock = async () => {
     if (saving) return;
     const nextLocked = !draftLocked;
     setDraftLocked(nextLocked);
-    void persist(draftControls, nextLocked);
+    setSaving(true);
+    setErrorMsg('');
+    const err = await onSaveSettings({ locked: nextLocked });
+    setSaving(false);
+    if (err) {
+      setDraftLocked(!nextLocked);
+      setErrorMsg(err);
+    }
   };
 
   return (
@@ -103,54 +83,7 @@ export function RoomSettingsModal({
           </button>
         </div>
 
-        <div className="mt-5 space-y-5">
-          {/* Who controls playback switch */}
-          <div>
-            <p className="text-sm font-medium text-white">
-              Who controls playback
-            </p>
-            <p className="mt-0.5 text-xs text-zinc-400">
-              Choose whether everyone can play, pause, and change videos or only you.
-            </p>
-            <div
-              role="radiogroup"
-              aria-label="Who controls playback"
-              className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-[#2a2a33] bg-[#0d0d12] p-1"
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={draftControls === 'everyone'}
-                disabled={saving}
-                onClick={() => handleSelectControls('everyone')}
-                className={`inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
-                  draftControls === 'everyone'
-                    ? 'bg-[#E50914] text-white'
-                    : 'text-zinc-300 hover:text-white active:bg-[#1b1b24]'
-                }`}
-              >
-                <Users className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Everyone</span>
-              </button>
-
-              <button
-                type="button"
-                role="radio"
-                aria-checked={draftControls === 'host'}
-                disabled={saving}
-                onClick={() => handleSelectControls('host')}
-                className={`inline-flex min-h-[42px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors cursor-pointer ${
-                  draftControls === 'host'
-                    ? 'bg-[#E50914] text-white'
-                    : 'text-zinc-300 hover:text-white active:bg-[#1b1b24]'
-                }`}
-              >
-                <Lock className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Host only</span>
-              </button>
-            </div>
-          </div>
-
+        <div className="mt-5 space-y-4">
           {/* Lock room switch */}
           <div className="flex items-center justify-between gap-4 rounded-xl border border-[#2a2a33] bg-[#0d0d12] p-4">
             <div className="min-w-0">
@@ -173,7 +106,7 @@ export function RoomSettingsModal({
               aria-checked={draftLocked}
               aria-label="Lock room"
               disabled={saving}
-              onClick={handleToggleLock}
+              onClick={() => void handleToggleLock()}
               className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors cursor-pointer disabled:opacity-60 ${
                 draftLocked
                   ? 'border-[#E50914] bg-[#E50914]'

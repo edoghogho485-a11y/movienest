@@ -36,7 +36,6 @@ import {
   normalizeRoomRecord,
   QUEUE_MAX_ITEMS,
   QueueItem,
-  RoomControlsMode,
   RoomRecord,
   SharedLibraryItem,
   updateRoomPlayback,
@@ -148,6 +147,14 @@ interface RoomPageProps {
   onRequestUsername: () => void;
 }
 
+const HOST_AWAY_THRESHOLD_SECONDS = 15;
+
+interface HostLiveState {
+  positionSeconds: number;
+  isPlaying: boolean;
+  hostAway: boolean;
+}
+
 function buildSafeRoomFallback(rawRoom: RoomRecord): RoomRecord {
   return (
     normalizeRoomRecord(rawRoom) ?? {
@@ -163,7 +170,7 @@ function buildSafeRoomFallback(rawRoom: RoomRecord): RoomRecord {
           ? Math.max(0, Math.floor(rawRoom.position_seconds))
           : 0,
       host_id: rawRoom?.host_id ?? null,
-      controls: rawRoom?.controls === 'host' ? 'host' : 'everyone',
+      controls: 'host',
       locked: Boolean(rawRoom?.locked),
       queue: normalizeQueueItems(rawRoom?.queue),
       updated_at: rawRoom?.updated_at || new Date().toISOString(),
@@ -172,30 +179,43 @@ function buildSafeRoomFallback(rawRoom: RoomRecord): RoomRecord {
   );
 }
 
-// Compute live room position: stored position + elapsed seconds since updated_at while playing
-function computeLiveRoomPosition(roomRecord: RoomRecord): number {
+// Compute host's live timestamp from updated_at; treat host as away if heartbeat is older than 15s while playing
+function getHostLiveState(roomRecord: RoomRecord): HostLiveState {
   const baseSeconds =
     typeof roomRecord.position_seconds === 'number' &&
     Number.isFinite(roomRecord.position_seconds)
       ? Math.max(0, Math.floor(roomRecord.position_seconds))
       : 0;
+  const isPlaying = Boolean(roomRecord.is_playing);
 
-  if (!roomRecord.is_playing) {
-    return baseSeconds;
+  if (!isPlaying) {
+    return { positionSeconds: baseSeconds, isPlaying: false, hostAway: false };
   }
 
   const updatedMs = Date.parse(roomRecord.updated_at);
   if (Number.isNaN(updatedMs)) {
-    return baseSeconds;
+    return { positionSeconds: baseSeconds, isPlaying: true, hostAway: false };
   }
 
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - updatedMs) / 1000));
-  return baseSeconds + elapsedSeconds;
+  if (elapsedSeconds > HOST_AWAY_THRESHOLD_SECONDS) {
+    return { positionSeconds: baseSeconds, isPlaying: true, hostAway: true };
+  }
+
+  return {
+    positionSeconds: baseSeconds + elapsedSeconds,
+    isPlaying: true,
+    hostAway: false,
+  };
 }
 
-// Show Join Choice modal if the room is already playing or past 10 seconds (unless host just created it)
-function shouldPromptLateJoiner(roomRecord: RoomRecord, justCreated: boolean): boolean {
-  if (justCreated) return false;
+// Non-hosts see Join Choice before playback starts if the room is already playing or past 10 seconds
+function shouldPromptLateJoiner(
+  roomRecord: RoomRecord,
+  isHost: boolean,
+  justCreated: boolean
+): boolean {
+  if (isHost || justCreated) return false;
   const pos =
     typeof roomRecord.position_seconds === 'number' &&
     Number.isFinite(roomRecord.position_seconds)
@@ -217,48 +237,52 @@ export function RoomPage({
   const safeUsername = typeof username === 'string' ? username : '';
 
   const [currentRoom, setCurrentRoom] = useState<RoomRecord>(() => buildSafeRoomFallback(room));
-  const [joinChoicePending, setJoinChoicePending] = useState<boolean>(() =>
-    shouldPromptLateJoiner(buildSafeRoomFallback(room), justCreated)
-  );
-  const [independentMode, setIndependentMode] = useState<boolean>(false);
-  const [joinModalLiveSeconds, setJoinModalLiveSeconds] = useState<number>(() =>
-    computeLiveRoomPosition(buildSafeRoomFallback(room))
-  );
-  const [syncingToRoom, setSyncingToRoom] = useState<boolean>(false);
+  const isHost = isRoomHost(currentRoom);
+
+  const [joinChoicePending, setJoinChoicePending] = useState<boolean>(() => {
+    const safe = buildSafeRoomFallback(room);
+    return shouldPromptLateJoiner(safe, isRoomHost(safe), justCreated);
+  });
+  // Non-hosts follow the host by default (ownPace = false); manual interaction switches to ownPace = true
+  const [ownPace, setOwnPace] = useState<boolean>(false);
+  const [joinModalState, setJoinModalState] = useState<{
+    positionSeconds: number;
+    hostAway: boolean;
+  }>(() => {
+    const live = getHostLiveState(buildSafeRoomFallback(room));
+    return { positionSeconds: live.positionSeconds, hostAway: live.hostAway };
+  });
+  const [syncingToHost, setSyncingToHost] = useState<boolean>(false);
 
   const isArchive = (currentRoom.source ?? 'youtube') === 'archive';
-  const isHost = isRoomHost(currentRoom);
-  const controlsMode: RoomControlsMode =
-    currentRoom.controls === 'host' ? 'host' : 'everyone';
   const isLocked = Boolean(currentRoom.locked);
-  const canControlPlayback = controlsMode === 'everyone' || isHost;
   const queue = normalizeQueueItems(currentRoom.queue);
 
   const [copied, setCopied] = useState(false);
-  const [resyncing, setResyncing] = useState(false);
   const [roomState, setRoomState] = useState<{
     isPlaying: boolean;
     positionSeconds: number;
   }>(() => {
     const safeInitial = buildSafeRoomFallback(room);
+    const live = getHostLiveState(safeInitial);
     return {
-      isPlaying: Boolean(safeInitial.is_playing),
-      positionSeconds: computeLiveRoomPosition(safeInitial),
+      isPlaying: live.isPlaying,
+      positionSeconds: live.positionSeconds,
     };
   });
 
-  // Track the local player's current play state separately so Independent Mode works cleanly
+  // Track the local player's current play state separately so Own pace works cleanly
   const [localIsPlaying, setLocalIsPlaying] = useState<boolean>(() => {
     const safeInitial = buildSafeRoomFallback(room);
-    return shouldPromptLateJoiner(safeInitial, justCreated)
-      ? false
-      : Boolean(safeInitial.is_playing);
+    const promptNeeded = shouldPromptLateJoiner(safeInitial, isRoomHost(safeInitial), justCreated);
+    return promptNeeded ? false : Boolean(safeInitial.is_playing);
   });
 
   // Live player time ticked every second from the active player
-  const [roomTimeSeconds, setRoomTimeSeconds] = useState<number>(() =>
-    computeLiveRoomPosition(buildSafeRoomFallback(room))
-  );
+  const [roomTimeSeconds, setRoomTimeSeconds] = useState<number>(() => {
+    const live = getHostLiveState(buildSafeRoomFallback(room));
+    return live.positionSeconds;
+  });
 
   const [playerReady, setPlayerReady] = useState(false);
   const [embedBlocked, setEmbedBlocked] = useState(false);
@@ -294,19 +318,18 @@ export function RoomPage({
   const latestServerRoomRef = useRef(currentRoom);
   const latestRoomStateRef = useRef(roomState);
   latestRoomStateRef.current = roomState;
-  const latestCanControlRef = useRef(canControlPlayback);
-  latestCanControlRef.current = canControlPlayback;
   const latestIsHostRef = useRef(isHost);
   latestIsHostRef.current = isHost;
   const joinChoicePendingRef = useRef(joinChoicePending);
   joinChoicePendingRef.current = joinChoicePending;
-  const independentModeRef = useRef(independentMode);
-  independentModeRef.current = independentMode;
+  const ownPaceRef = useRef(ownPace);
+  ownPaceRef.current = ownPace;
 
   // Target position & play state applied once when the player loads (without writing to room)
+  const initialHostLive = getHostLiveState(currentRoom);
   const initialJoinTargetRef = useRef<{ isPlaying: boolean; positionSeconds: number }>({
-    isPlaying: Boolean(currentRoom.is_playing),
-    positionSeconds: computeLiveRoomPosition(currentRoom),
+    isPlaying: initialHostLive.isPlaying,
+    positionSeconds: initialHostLive.positionSeconds,
   });
 
   // Programmatic change flag + loop-prevention and debounce timer refs
@@ -316,8 +339,9 @@ export function RoomPage({
   const pushDebounceTimerRef = useRef<number | null>(null);
   const recentSentTimestampsRef = useRef<Set<number>>(new Set());
   const countdownTimersRef = useRef<number[]>([]);
-  const autoAdvanceTimerRef = useRef<number | null>(null);
-  const applyRemoteStateRef = useRef<(isPlaying: boolean, targetSeconds: number) => void>(() => {});
+  const applyRemoteStateRef = useRef<
+    (isPlaying: boolean, targetSeconds: number, forceSeek?: boolean) => void
+  >(() => {});
   const runSyncedCountdownRef = useRef<(targetSeconds: number, initiatedByHost: boolean) => void>(
     () => {}
   );
@@ -336,31 +360,43 @@ export function RoomPage({
     lastRoomIdRef.current = room.id;
 
     const safe = buildSafeRoomFallback(room);
-    const shouldPrompt = shouldPromptLateJoiner(safe, justCreated);
-    const livePos = computeLiveRoomPosition(safe);
+    const hostCheck = isRoomHost(safe);
+    const shouldPrompt = shouldPromptLateJoiner(safe, hostCheck, justCreated);
+    const hostLive = getHostLiveState(safe);
 
     setCurrentRoom(safe);
     latestServerRoomRef.current = safe;
     setJoinChoicePending(shouldPrompt);
     joinChoicePendingRef.current = shouldPrompt;
-    setIndependentMode(false);
-    independentModeRef.current = false;
-    setJoinModalLiveSeconds(livePos);
-    setRoomState({ isPlaying: safe.is_playing, positionSeconds: livePos });
-    setRoomTimeSeconds(livePos);
-    setLocalIsPlaying(shouldPrompt ? false : safe.is_playing);
-    initialJoinTargetRef.current = { isPlaying: safe.is_playing, positionSeconds: livePos };
+    setOwnPace(false);
+    ownPaceRef.current = false;
+    setJoinModalState({
+      positionSeconds: hostLive.positionSeconds,
+      hostAway: hostLive.hostAway,
+    });
+    setRoomState({ isPlaying: hostLive.isPlaying, positionSeconds: hostLive.positionSeconds });
+    setRoomTimeSeconds(hostLive.positionSeconds);
+    setLocalIsPlaying(shouldPrompt ? false : hostLive.isPlaying);
+    initialJoinTargetRef.current = {
+      isPlaying: hostLive.isPlaying,
+      positionSeconds: hostLive.positionSeconds,
+    };
     isProgrammaticChangeRef.current = true;
     isApplyingRemoteRef.current = true;
   }, [room, justCreated]);
 
-  // Keep the Join Choice timestamp live while the newcomer decides
+  // Keep the Join Choice timestamp and host-away status live while the newcomer decides
   useEffect(() => {
     if (!joinChoicePending) return;
-    setJoinModalLiveSeconds(computeLiveRoomPosition(latestServerRoomRef.current));
-    const timer = window.setInterval(() => {
-      setJoinModalLiveSeconds(computeLiveRoomPosition(latestServerRoomRef.current));
-    }, 1000);
+    const refreshModal = () => {
+      const hostLive = getHostLiveState(latestServerRoomRef.current);
+      setJoinModalState({
+        positionSeconds: hostLive.positionSeconds,
+        hostAway: hostLive.hostAway,
+      });
+    };
+    refreshModal();
+    const timer = window.setInterval(refreshModal, 1000);
     return () => window.clearInterval(timer);
   }, [joinChoicePending]);
 
@@ -549,12 +585,13 @@ export function RoomPage({
     sendReaction,
     sendActivity: broadcastActivity,
     sendCountdown,
+    sendHostSync,
   } = useRoomChannels({
     roomId: currentRoom.id,
     roomCode: currentRoom.code,
     username: safeUsername,
     isHost,
-    independentMode,
+    independentMode: !isHost && ownPace,
     onRoomUpdated: (updated) => {
       latestServerRoomRef.current = updated;
 
@@ -564,18 +601,21 @@ export function RoomPage({
         (updated.source ?? 'youtube') !== (prevRoom.source ?? 'youtube') ||
         (updated.video_url ?? null) !== (prevRoom.video_url ?? null);
 
-      // While the newcomer hasn't chosen how to join yet, update metadata silently without loading/touching playback
+      // While a non-host hasn't chosen how to join yet, update metadata silently without touching playback
       if (joinChoicePendingRef.current) {
         setCurrentRoom(updated);
-        setJoinModalLiveSeconds(computeLiveRoomPosition(updated));
+        const hostLive = getHostLiveState(updated);
+        setJoinModalState({
+          positionSeconds: hostLive.positionSeconds,
+          hostAway: hostLive.hostAway,
+        });
         return;
       }
 
-      // In independent mode, keep room settings/queue current but ignore playback and video jumps
-      if (independentModeRef.current) {
+      // Host is the sole controller of playback: never let DB rows seek or pause the host's own player
+      if (latestIsHostRef.current) {
         setCurrentRoom((prev) => ({
           ...prev,
-          controls: updated.controls,
           locked: updated.locked,
           queue: updated.queue,
           host_id: updated.host_id,
@@ -583,66 +623,61 @@ export function RoomPage({
         return;
       }
 
-      setCurrentRoom(updated);
-
-      if (videoChanged) {
-        const liveTarget = computeLiveRoomPosition(updated);
-        initialJoinTargetRef.current = {
-          isPlaying: updated.is_playing,
-          positionSeconds: liveTarget,
-        };
-        setRoomState({
-          isPlaying: updated.is_playing,
-          positionSeconds: liveTarget,
-        });
-        setRoomTimeSeconds(liveTarget);
-        setLocalIsPlaying(updated.is_playing);
+      // When a non-host is on their own pace, ignore host playback and video changes
+      if (ownPaceRef.current) {
+        setCurrentRoom((prev) => ({
+          ...prev,
+          locked: updated.locked,
+          queue: updated.queue,
+          host_id: updated.host_id,
+        }));
         return;
       }
 
-      // Ignore the echo of playback updates triggered by our own player
-      const incomingMs = Date.parse(updated.updated_at);
-      if (!Number.isNaN(incomingMs)) {
-        for (const sentMs of recentSentTimestampsRef.current) {
-          if (Math.abs(incomingMs - sentMs) < 250) {
-            return;
-          }
-        }
-      }
+      // Non-host in Following mode: apply host video/playback updates
+      setCurrentRoom(updated);
+      const hostLive = getHostLiveState(updated);
 
-      // Cancel any queued local debounce before applying a remote room update
-      if (pushDebounceTimerRef.current) {
-        window.clearTimeout(pushDebounceTimerRef.current);
-        pushDebounceTimerRef.current = null;
-      }
-
-      const liveTarget = computeLiveRoomPosition(updated);
-
-      // Ignore remote playback updates if our player is already in the same play state and within 1 second
-      const localTime = getCurrentPlayerTime();
-      const localPlaying = getLocalPlayerIsPlaying();
-      if (localPlaying === updated.is_playing && Math.abs(localTime - liveTarget) <= 1) {
+      if (videoChanged) {
+        initialJoinTargetRef.current = {
+          isPlaying: hostLive.isPlaying,
+          positionSeconds: hostLive.positionSeconds,
+        };
+        markProgrammaticChange(2500);
         setRoomState({
-          isPlaying: updated.is_playing,
-          positionSeconds: liveTarget,
+          isPlaying: hostLive.isPlaying,
+          positionSeconds: hostLive.positionSeconds,
         });
+        setRoomTimeSeconds(hostLive.positionSeconds);
+        setLocalIsPlaying(hostLive.isPlaying);
         return;
       }
 
       setRoomState({
-        isPlaying: updated.is_playing,
-        positionSeconds: liveTarget,
+        isPlaying: hostLive.isPlaying,
+        positionSeconds: hostLive.positionSeconds,
       });
-      setRoomTimeSeconds(liveTarget);
-      setLocalIsPlaying(updated.is_playing);
-      applyRemoteStateRef.current(updated.is_playing, liveTarget);
+
+      // Only seek/update player if play state differs OR drift exceeds 2 seconds (ignores 5s heartbeats)
+      const localTime = getCurrentPlayerTime();
+      const localPlaying = getLocalPlayerIsPlaying();
+      const needsPlayChange = localPlaying !== hostLive.isPlaying;
+      const needsSeek = Math.abs(localTime - hostLive.positionSeconds) > 2;
+
+      if (!needsPlayChange && !needsSeek) {
+        return;
+      }
+
+      setRoomTimeSeconds(hostLive.positionSeconds);
+      setLocalIsPlaying(hostLive.isPlaying);
+      applyRemoteStateRef.current(hostLive.isPlaying, hostLive.positionSeconds, false);
     },
     onReactionReceived: (payload) => {
       spawnFloatingReaction(payload.id, payload.emoji, payload.sender);
     },
     onActivityReceived: ({ actor, action, positionSeconds }) => {
       if (joinChoicePendingRef.current) return;
-      if (independentModeRef.current && action !== 'video') return;
+      if (ownPaceRef.current && action !== 'video') return;
       if (action === 'pause') {
         showToast(`${actor} paused`);
       } else if (action === 'play') {
@@ -654,25 +689,49 @@ export function RoomPage({
       }
     },
     onCountdownReceived: (positionSeconds) => {
-      if (joinChoicePendingRef.current || independentModeRef.current) return;
+      if (latestIsHostRef.current || joinChoicePendingRef.current || ownPaceRef.current) return;
       runSyncedCountdownRef.current(positionSeconds, false);
+    },
+    onHostSyncReceived: ({ positionSeconds, isPlaying }) => {
+      if (latestIsHostRef.current || joinChoicePendingRef.current) return;
+
+      // Return every non-host back to Following mode and jump to the host's timestamp
+      ownPaceRef.current = false;
+      setOwnPace(false);
+
+      const serverRoom = latestServerRoomRef.current ?? latestRoomRef.current;
+      const prevRoom = latestRoomRef.current;
+      const videoChanged =
+        serverRoom.video_id !== prevRoom.video_id ||
+        (serverRoom.source ?? 'youtube') !== (prevRoom.source ?? 'youtube') ||
+        (serverRoom.video_url ?? null) !== (prevRoom.video_url ?? null);
+
+      setRoomState({ isPlaying, positionSeconds });
+      setRoomTimeSeconds(positionSeconds);
+      setLocalIsPlaying(isPlaying);
+
+      if (videoChanged) {
+        initialJoinTargetRef.current = { isPlaying, positionSeconds };
+        markProgrammaticChange(2500);
+        setCurrentRoom(serverRoom);
+      } else {
+        applyRemoteStateRef.current(isPlaying, positionSeconds, true);
+      }
+
+      showToast('Host synced everyone');
     },
     onPresenceNotice: (text) => {
       showToast(text);
     },
   });
 
-  // Clean up local countdown, debounce, and auto-advance timers when leaving the room
+  // Clean up local countdown, debounce, and programmatic timers when leaving the room
   useEffect(() => {
     return () => {
       for (const timerId of countdownTimersRef.current) {
         window.clearTimeout(timerId);
       }
       countdownTimersRef.current = [];
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
-        autoAdvanceTimerRef.current = null;
-      }
       if (pushDebounceTimerRef.current) {
         window.clearTimeout(pushDebounceTimerRef.current);
         pushDebounceTimerRef.current = null;
@@ -740,16 +799,18 @@ export function RoomPage({
     video.needsTitleLookup,
   ]);
 
-  // Apply remote state from Supabase to whichever player is active
+  // Apply host playback state to the local player (passive sync seeks only when drift > 2s)
   const applyRemoteStateToPlayer = useCallback(
-    (isPlaying: boolean, targetSeconds: number) => {
+    (isPlaying: boolean, targetSeconds: number, forceSeek = false) => {
+      const seekThreshold = forceSeek ? 0.5 : 2;
+
       if ((latestRoomRef.current.source ?? 'youtube') === 'archive') {
         const videoEl = htmlVideoRef.current;
         if (!videoEl) return;
 
         markProgrammaticChange(1400);
 
-        if (Math.abs(videoEl.currentTime - targetSeconds) > 1) {
+        if (Math.abs(videoEl.currentTime - targetSeconds) > seekThreshold) {
           videoEl.currentTime = targetSeconds;
         }
 
@@ -778,14 +839,16 @@ export function RoomPage({
         const currentTime = player.getCurrentTime();
         const currentState = player.getPlayerState();
 
-        // Ignore micro-seeks within 1 second of current time
-        if (Math.abs(currentTime - targetSeconds) > 1 && typeof player.seekTo === 'function') {
+        if (
+          Math.abs(currentTime - targetSeconds) > seekThreshold &&
+          typeof player.seekTo === 'function'
+        ) {
           player.seekTo(targetSeconds, true);
         }
 
         if (isPlaying && currentState !== 1 && typeof player.playVideo === 'function') {
           player.playVideo();
-        } else if (!isPlaying && currentState === 1 && typeof player.pauseVideo === 'function') {
+        } else if (!isPlaying && typeof player.pauseVideo === 'function') {
           player.pauseVideo();
         }
 
@@ -801,22 +864,22 @@ export function RoomPage({
     [markProgrammaticChange, clearProgrammaticChange]
   );
 
-  // Immediately write playback state to Supabase + broadcast activity (never called on join/independent mode)
-  const commitPlaybackUpdate = useCallback(
+  // Switch a non-host viewer into Own pace when they manually play, pause, or seek
+  const enterOwnPace = useCallback(() => {
+    if (latestIsHostRef.current || ownPaceRef.current) return;
+    ownPaceRef.current = true;
+    setOwnPace(true);
+  }, []);
+
+  // Host-only: write playback state to Supabase + broadcast activity (non-hosts never write)
+  const commitHostPlaybackUpdate = useCallback(
     async (
       isPlaying: boolean,
       positionSeconds: number,
       action: 'play' | 'pause' | 'seek',
       skipActivityBroadcast = false
     ) => {
-      if (joinChoicePendingRef.current || independentModeRef.current) return;
-
-      if (!latestCanControlRef.current) {
-        const targetPos = computeLiveRoomPosition(latestRoomRef.current);
-        applyRemoteStateToPlayer(latestRoomStateRef.current.isPlaying, targetPos);
-        showToast('Host controls playback');
-        return;
-      }
+      if (!latestIsHostRef.current) return;
 
       const updatedAt = new Date().toISOString();
       const sentMs = Date.parse(updatedAt);
@@ -826,6 +889,13 @@ export function RoomPage({
       }, 10000);
 
       const safePos = Math.max(0, Math.floor(positionSeconds));
+      latestRoomRef.current = {
+        ...latestRoomRef.current,
+        is_playing: isPlaying,
+        position_seconds: safePos,
+        updated_at: updatedAt,
+      };
+      latestServerRoomRef.current = latestRoomRef.current;
       setRoomState({ isPlaying, positionSeconds: safePos });
       setRoomTimeSeconds(safePos);
 
@@ -840,43 +910,21 @@ export function RoomPage({
         updatedAt,
       });
     },
-    [applyRemoteStateToPlayer, broadcastActivity, showToast]
+    [broadcastActivity]
   );
 
-  // Debounced outgoing playback update (300ms) with programmatic guard and 1-second micro-seek filter
-  const pushLocalState = useCallback(
-    (
-      isPlaying: boolean,
-      positionSeconds: number,
-      action: 'play' | 'pause' | 'seek',
-      skipActivityBroadcast = false
-    ) => {
-      // Never write on join, during programmatic seeks/loads, or in independent mode
+  // Host-only debounced seek push (avoids spamming Supabase while scrubbing)
+  const pushHostSeek = useCallback(
+    (isPlaying: boolean, positionSeconds: number) => {
       if (
-        joinChoicePendingRef.current ||
-        independentModeRef.current ||
+        !latestIsHostRef.current ||
         isProgrammaticChangeRef.current ||
         isApplyingRemoteRef.current
       ) {
         return;
       }
 
-      if (!latestCanControlRef.current) {
-        const targetPos = computeLiveRoomPosition(latestRoomRef.current);
-        applyRemoteStateToPlayer(latestRoomStateRef.current.isPlaying, targetPos);
-        showToast('Host controls playback');
-        return;
-      }
-
       const safePos = Math.max(0, Math.floor(positionSeconds));
-      const liveRoomPos = computeLiveRoomPosition(latestRoomRef.current);
-      const samePlayState = isPlaying === latestRoomStateRef.current.isPlaying;
-
-      // Ignore redundant updates within 1 second of the room's current playback position
-      if (samePlayState && Math.abs(safePos - liveRoomPos) <= 1) {
-        return;
-      }
-
       if (pushDebounceTimerRef.current) {
         window.clearTimeout(pushDebounceTimerRef.current);
       }
@@ -884,24 +932,23 @@ export function RoomPage({
       pushDebounceTimerRef.current = window.setTimeout(() => {
         pushDebounceTimerRef.current = null;
         if (
-          joinChoicePendingRef.current ||
-          independentModeRef.current ||
+          !latestIsHostRef.current ||
           isProgrammaticChangeRef.current ||
           isApplyingRemoteRef.current
         ) {
           return;
         }
-        void commitPlaybackUpdate(isPlaying, safePos, action, skipActivityBroadcast);
-      }, 300);
+        void commitHostPlaybackUpdate(isPlaying, safePos, 'seek', false);
+      }, 250);
     },
-    [applyRemoteStateToPlayer, commitPlaybackUpdate, showToast]
+    [commitHostPlaybackUpdate]
   );
 
-  // Play a specific queued or picked movie across the whole room
+  // Host-only: play a specific queued or picked movie across the whole room
   const switchRoomMovie = useCallback(
     async (movie: PickerMovieSelection, nextQueue?: QueueItem[]): Promise<string | null> => {
-      if (!latestCanControlRef.current) {
-        return 'Host controls playback in this room.';
+      if (!latestIsHostRef.current) {
+        return 'Only the host can change the room movie.';
       }
 
       const updatedAt = new Date().toISOString();
@@ -927,71 +974,63 @@ export function RoomPage({
         return error;
       }
 
-      setCurrentRoom((prev) => ({
-        ...prev,
-        video_id: movie.videoId,
-        source: movie.source,
-        video_url: movie.source === 'archive' ? movie.videoUrl ?? null : null,
-        is_playing: shouldAutoPlay,
-        position_seconds: 0,
-        queue: nextQueue ?? prev.queue,
-        updated_at: updatedAt,
-      }));
+      initialJoinTargetRef.current = { isPlaying: shouldAutoPlay, positionSeconds: 0 };
+      markProgrammaticChange(2500);
+      setCurrentRoom((prev) => {
+        const nextRoom: RoomRecord = {
+          ...prev,
+          video_id: movie.videoId,
+          source: movie.source,
+          video_url: movie.source === 'archive' ? movie.videoUrl ?? null : null,
+          is_playing: shouldAutoPlay,
+          position_seconds: 0,
+          queue: nextQueue ?? prev.queue,
+          updated_at: updatedAt,
+        };
+        latestServerRoomRef.current = nextRoom;
+        return nextRoom;
+      });
       setRoomState({ isPlaying: shouldAutoPlay, positionSeconds: 0 });
       setRoomTimeSeconds(0);
+      setLocalIsPlaying(shouldAutoPlay);
       broadcastActivity('video', 0);
       return null;
     },
-    [broadcastActivity]
+    [broadcastActivity, markProgrammaticChange]
   );
 
-  // Advance to the next movie in the Up Next queue when the current video ends
+  // Host-only: advance to the next movie in the Up Next queue when the current video ends
   const advanceQueueOnEnd = useCallback(async () => {
+    if (!latestIsHostRef.current) return;
+
     const active = latestRoomRef.current;
     const currentQueue = normalizeQueueItems(active.queue);
     if (currentQueue.length === 0) return;
 
     const endedVideoId = active.video_id;
     const [nextItem, ...rest] = currentQueue;
+    if (latestRoomRef.current.video_id !== endedVideoId) return;
 
-    const runAdvance = async () => {
-      // Skip if another client already switched away from the ended video
-      if (latestRoomRef.current.video_id !== endedVideoId) return;
-
-      let resolvedUrl = nextItem.videoUrl ?? null;
-      if (nextItem.source === 'archive' && !resolvedUrl) {
-        const details = await fetchArchiveMovieDetails(nextItem.videoId);
-        if (!details.mp4Url || !isValidArchiveDownloadUrl(details.mp4Url)) {
-          // Drop unplayable archive entry and keep moving
-          await updateRoomQueue({ roomId: active.id, queue: rest });
-          return;
-        }
-        resolvedUrl = details.mp4Url;
+    let resolvedUrl = nextItem.videoUrl ?? null;
+    if (nextItem.source === 'archive' && !resolvedUrl) {
+      const details = await fetchArchiveMovieDetails(nextItem.videoId);
+      if (!details.mp4Url || !isValidArchiveDownloadUrl(details.mp4Url)) {
+        await updateRoomQueue({ roomId: active.id, queue: rest });
+        return;
       }
-
-      await switchRoomMovie(
-        {
-          videoId: nextItem.videoId,
-          title: nextItem.title,
-          thumbnail: nextItem.thumbnail,
-          source: nextItem.source,
-          videoUrl: resolvedUrl,
-        },
-        rest
-      );
-    };
-
-    if (latestIsHostRef.current) {
-      await runAdvance();
-    } else if (latestCanControlRef.current) {
-      // Wait briefly so the host leads auto-advance if present, avoiding duplicate skips
-      if (autoAdvanceTimerRef.current) {
-        window.clearTimeout(autoAdvanceTimerRef.current);
-      }
-      autoAdvanceTimerRef.current = window.setTimeout(() => {
-        void runAdvance();
-      }, 1800);
+      resolvedUrl = details.mp4Url;
     }
+
+    await switchRoomMovie(
+      {
+        videoId: nextItem.videoId,
+        title: nextItem.title,
+        thumbnail: nextItem.thumbnail,
+        source: nextItem.source,
+        videoUrl: resolvedUrl,
+      },
+      rest
+    );
   }, [switchRoomMovie]);
 
   // Run the synchronized 3 -> 2 -> 1 countdown overlay then begin playback together
@@ -1003,7 +1042,7 @@ export function RoomPage({
       countdownTimersRef.current = [];
 
       // Pause and seek everyone to the exact starting timestamp before 3-2-1
-      applyRemoteStateToPlayer(false, targetSeconds);
+      applyRemoteStateToPlayer(false, targetSeconds, true);
       setLocalIsPlaying(false);
       setCountdownValue(3);
 
@@ -1011,16 +1050,16 @@ export function RoomPage({
       const t2 = window.setTimeout(() => setCountdownValue(1), 2000);
       const t3 = window.setTimeout(() => {
         setCountdownValue(null);
-        applyRemoteStateToPlayer(true, targetSeconds);
+        applyRemoteStateToPlayer(true, targetSeconds, true);
         setLocalIsPlaying(true);
-        if (initiatedByHost) {
-          void commitPlaybackUpdate(true, targetSeconds, 'play', true);
+        if (initiatedByHost && latestIsHostRef.current) {
+          void commitHostPlaybackUpdate(true, targetSeconds, 'play', true);
         }
       }, 3000);
 
       countdownTimersRef.current = [t1, t2, t3];
     },
-    [applyRemoteStateToPlayer, commitPlaybackUpdate]
+    [applyRemoteStateToPlayer, commitHostPlaybackUpdate]
   );
 
   applyRemoteStateRef.current = applyRemoteStateToPlayer;
@@ -1062,12 +1101,10 @@ export function RoomPage({
             setPlayerReady(true);
 
             // Compute start target cleanly without ever writing back to the room
-            const target = independentModeRef.current
-              ? initialJoinTargetRef.current
-              : {
-                  isPlaying: latestRoomRef.current.is_playing,
-                  positionSeconds: computeLiveRoomPosition(latestRoomRef.current),
-                };
+            const target =
+              !latestIsHostRef.current && ownPaceRef.current
+                ? initialJoinTargetRef.current
+                : getHostLiveState(latestServerRoomRef.current);
 
             const needsSeekOrPlay = target.positionSeconds > 1 || target.isPlaying;
             markProgrammaticChange(needsSeekOrPlay ? 2200 : 600);
@@ -1103,7 +1140,7 @@ export function RoomPage({
               saveRoomHistoryProgress(true);
             }
 
-            // Ignore automatic load/seek events, join modal state, and independent mode
+            // Ignore automatic load/seek events and pending join modal state
             if (
               isProgrammaticChangeRef.current ||
               isApplyingRemoteRef.current ||
@@ -1120,8 +1157,14 @@ export function RoomPage({
                 wallMs: Date.now(),
                 wasPlaying: true,
               };
-              if (!independentModeRef.current) {
-                pushLocalState(true, currentTime, 'play');
+              if (latestIsHostRef.current) {
+                if (pushDebounceTimerRef.current) {
+                  window.clearTimeout(pushDebounceTimerRef.current);
+                  pushDebounceTimerRef.current = null;
+                }
+                void commitHostPlaybackUpdate(true, currentTime, 'play', false);
+              } else {
+                enterOwnPace();
               }
             } else if (event.data === YT.PlayerState.PAUSED) {
               lastTimeCheckRef.current = {
@@ -1129,11 +1172,17 @@ export function RoomPage({
                 wallMs: Date.now(),
                 wasPlaying: false,
               };
-              if (!independentModeRef.current) {
-                pushLocalState(false, currentTime, 'pause');
+              if (latestIsHostRef.current) {
+                if (pushDebounceTimerRef.current) {
+                  window.clearTimeout(pushDebounceTimerRef.current);
+                  pushDebounceTimerRef.current = null;
+                }
+                void commitHostPlaybackUpdate(false, currentTime, 'pause', false);
+              } else {
+                enterOwnPace();
               }
             } else if (event.data === YT.PlayerState.ENDED) {
-              if (!independentModeRef.current) {
+              if (latestIsHostRef.current) {
                 void advanceQueueOnEnd();
               }
             }
@@ -1165,7 +1214,8 @@ export function RoomPage({
     video.youtubeId,
     joinChoicePending,
     markProgrammaticChange,
-    pushLocalState,
+    commitHostPlaybackUpdate,
+    enterOwnPace,
     advanceQueueOnEnd,
     saveRoomHistoryProgress,
   ]);
@@ -1205,8 +1255,12 @@ export function RoomPage({
           wasPlaying: isPlaying,
         };
 
-        if (Math.abs(actualTime - expectedTime) > 2 && !independentModeRef.current) {
-          pushLocalState(isPlaying, actualTime, 'seek');
+        if (Math.abs(actualTime - expectedTime) > 2) {
+          if (latestIsHostRef.current) {
+            pushHostSeek(isPlaying, actualTime);
+          } else {
+            enterOwnPace();
+          }
         }
       } catch {
         // Ignore transient YouTube IFrame API errors
@@ -1214,7 +1268,15 @@ export function RoomPage({
     }, 500);
 
     return () => window.clearInterval(intervalId);
-  }, [isArchive, playerReady, embedBlocked, joinChoicePending, currentRoom.id, pushLocalState]);
+  }, [
+    isArchive,
+    playerReady,
+    embedBlocked,
+    joinChoicePending,
+    currentRoom.id,
+    pushHostSeek,
+    enterOwnPace,
+  ]);
 
   // 3. Keep player time updated every second from the real player time
   useEffect(() => {
@@ -1253,6 +1315,58 @@ export function RoomPage({
     };
   }, [currentRoom.id, currentRoom.video_id, isArchive, readRoomHistoryMetrics, saveRoomHistoryProgress]);
 
+  // 5. Host-only 5-second heartbeat: writes position_seconds and updated_at silently while playing
+  useEffect(() => {
+    if (
+      !isHost ||
+      !localIsPlaying ||
+      !playerReady ||
+      embedBlocked ||
+      archiveError ||
+      countdownValue !== null
+    ) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (!latestIsHostRef.current || !getLocalPlayerIsPlaying()) return;
+      const pos = Math.max(0, Math.floor(getCurrentPlayerTime()));
+      const updatedAt = new Date().toISOString();
+      const sentMs = Date.parse(updatedAt);
+      recentSentTimestampsRef.current.add(sentMs);
+      window.setTimeout(() => {
+        recentSentTimestampsRef.current.delete(sentMs);
+      }, 10000);
+
+      latestRoomRef.current = {
+        ...latestRoomRef.current,
+        is_playing: true,
+        position_seconds: pos,
+        updated_at: updatedAt,
+      };
+      latestServerRoomRef.current = latestRoomRef.current;
+      setRoomState({ isPlaying: true, positionSeconds: pos });
+
+      void updateRoomPlayback({
+        roomId: latestRoomRef.current.id,
+        isPlaying: true,
+        positionSeconds: pos,
+        updatedAt,
+      });
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [
+    isHost,
+    localIsPlaying,
+    playerReady,
+    embedBlocked,
+    archiveError,
+    countdownValue,
+    getCurrentPlayerTime,
+    getLocalPlayerIsPlaying,
+  ]);
+
   const handleCopyInvite = async () => {
     const ok = await copyTextToClipboard(inviteLink);
     if (ok) {
@@ -1288,10 +1402,12 @@ export function RoomPage({
     sendReaction({ id, emoji, sender });
   };
 
-  // Manual touch-friendly play/pause control (local-only when in independent mode)
+  // Manual touch-friendly play/pause control (host controls room; non-host controls local player)
   const handleTogglePlayPause = () => {
-    if (!independentMode && !canControlPlayback) return;
     clearProgrammaticChange();
+    if (!isHost) {
+      enterOwnPace();
+    }
 
     if (isArchive) {
       const videoEl = htmlVideoRef.current;
@@ -1317,44 +1433,51 @@ export function RoomPage({
 
   // Host-only "Start together" 3-2-1 countdown broadcast
   const handleStartTogether = () => {
-    if (!isHost || !playerReady || independentMode) return;
+    if (!isHost || !playerReady) return;
     const targetSeconds = Math.max(0, Math.floor(getCurrentPlayerTime()));
 
     sendCountdown(targetSeconds);
     runSyncedCountdown(targetSeconds, true);
   };
 
-  // Re-fetch latest room state from Supabase and jump to live position
-  const handleManualResync = async () => {
-    setResyncing(true);
-    if (pushDebounceTimerRef.current) {
-      window.clearTimeout(pushDebounceTimerRef.current);
-      pushDebounceTimerRef.current = null;
-    }
-    const { room: latest } = await findRoomByCode(currentRoom.code);
-    setResyncing(false);
+  // Host-only "Sync everyone to me": broadcasts host position/play state without altering host's own playback
+  const handleSyncEveryoneToMe = () => {
+    if (!isHost || !playerReady) return;
+    const pos = Math.max(0, Math.floor(getCurrentPlayerTime()));
+    const playing = getLocalPlayerIsPlaying();
 
-    if (latest) {
-      latestServerRoomRef.current = latest;
-      const livePos = computeLiveRoomPosition(latest);
-      setCurrentRoom(latest);
-      setRoomState({
-        isPlaying: latest.is_playing,
-        positionSeconds: livePos,
-      });
-      setRoomTimeSeconds(livePos);
-      setLocalIsPlaying(latest.is_playing);
-      applyRemoteStateToPlayer(latest.is_playing, livePos);
-    } else {
-      const livePos = computeLiveRoomPosition(latestRoomRef.current);
-      applyRemoteStateToPlayer(roomState.isPlaying, livePos);
-    }
+    sendHostSync(pos, playing);
+
+    const updatedAt = new Date().toISOString();
+    const sentMs = Date.parse(updatedAt);
+    recentSentTimestampsRef.current.add(sentMs);
+    window.setTimeout(() => {
+      recentSentTimestampsRef.current.delete(sentMs);
+    }, 10000);
+
+    latestRoomRef.current = {
+      ...latestRoomRef.current,
+      is_playing: playing,
+      position_seconds: pos,
+      updated_at: updatedAt,
+    };
+    latestServerRoomRef.current = latestRoomRef.current;
+    setRoomState({ isPlaying: playing, positionSeconds: pos });
+
+    void updateRoomPlayback({
+      roomId: latestRoomRef.current.id,
+      isPlaying: playing,
+      positionSeconds: pos,
+      updatedAt,
+    });
+
+    showToast(`Synced everyone to ${formatSeconds(pos)}`);
   };
 
-  // Join Choice handlers (never write to room on join)
-  const handleJoinIndependent = () => {
-    independentModeRef.current = true;
-    setIndependentMode(true);
+  // Non-host Join Choice handlers (never write to rooms on join)
+  const handleStartFromBeginning = () => {
+    ownPaceRef.current = true;
+    setOwnPace(true);
     initialJoinTargetRef.current = { isPlaying: true, positionSeconds: 0 };
     setRoomTimeSeconds(0);
     setLocalIsPlaying(true);
@@ -1363,36 +1486,32 @@ export function RoomPage({
     setJoinChoicePending(false);
   };
 
-  const handleJoinLive = () => {
+  const handleContinueWithHost = () => {
     const targetRoom = latestServerRoomRef.current ?? latestRoomRef.current;
-    const livePos = computeLiveRoomPosition(targetRoom);
-    independentModeRef.current = false;
-    setIndependentMode(false);
+    const hostLive = getHostLiveState(targetRoom);
+    ownPaceRef.current = false;
+    setOwnPace(false);
     initialJoinTargetRef.current = {
-      isPlaying: targetRoom.is_playing,
-      positionSeconds: livePos,
+      isPlaying: hostLive.isPlaying,
+      positionSeconds: hostLive.positionSeconds,
     };
     setCurrentRoom(targetRoom);
-    setRoomState({ isPlaying: targetRoom.is_playing, positionSeconds: livePos });
-    setRoomTimeSeconds(livePos);
-    setLocalIsPlaying(targetRoom.is_playing);
+    setRoomState({ isPlaying: hostLive.isPlaying, positionSeconds: hostLive.positionSeconds });
+    setRoomTimeSeconds(hostLive.positionSeconds);
+    setLocalIsPlaying(hostLive.isPlaying);
     markProgrammaticChange(2500);
     joinChoicePendingRef.current = false;
     setJoinChoicePending(false);
   };
 
-  // Exit independent mode and jump back to the live room position
-  const handleSyncWithRoom = async () => {
-    if (syncingToRoom) return;
-    setSyncingToRoom(true);
-    if (pushDebounceTimerRef.current) {
-      window.clearTimeout(pushDebounceTimerRef.current);
-      pushDebounceTimerRef.current = null;
-    }
+  // Non-host "Sync to host" (one-way: jumps local player to host's position/play state and returns to Following)
+  const handleSyncToHost = async () => {
+    if (isHost || syncingToHost) return;
+    setSyncingToHost(true);
 
     const { room: fetched } = await findRoomByCode(latestRoomRef.current.code);
     const targetRoom = fetched ?? latestServerRoomRef.current ?? latestRoomRef.current;
-    const livePos = computeLiveRoomPosition(targetRoom);
+    const hostLive = getHostLiveState(targetRoom);
 
     const prevRoom = latestRoomRef.current;
     const videoChanged =
@@ -1401,41 +1520,41 @@ export function RoomPage({
       (targetRoom.video_url ?? null) !== (prevRoom.video_url ?? null);
 
     latestServerRoomRef.current = targetRoom;
-    independentModeRef.current = false;
-    setIndependentMode(false);
-    setRoomState({ isPlaying: targetRoom.is_playing, positionSeconds: livePos });
-    setRoomTimeSeconds(livePos);
-    setLocalIsPlaying(targetRoom.is_playing);
+    ownPaceRef.current = false;
+    setOwnPace(false);
+    setRoomState({ isPlaying: hostLive.isPlaying, positionSeconds: hostLive.positionSeconds });
+    setRoomTimeSeconds(hostLive.positionSeconds);
+    setLocalIsPlaying(hostLive.isPlaying);
 
     if (videoChanged) {
       initialJoinTargetRef.current = {
-        isPlaying: targetRoom.is_playing,
-        positionSeconds: livePos,
+        isPlaying: hostLive.isPlaying,
+        positionSeconds: hostLive.positionSeconds,
       };
       markProgrammaticChange(2500);
       setCurrentRoom(targetRoom);
     } else {
       setCurrentRoom(targetRoom);
-      applyRemoteStateToPlayer(targetRoom.is_playing, livePos);
+      applyRemoteStateToPlayer(hostLive.isPlaying, hostLive.positionSeconds, true);
     }
 
-    setSyncingToRoom(false);
-    showToast(`Synced to ${formatSeconds(livePos)}`);
+    setSyncingToHost(false);
+    showToast(
+      hostLive.hostAway
+        ? 'Host seems to be away'
+        : `Synced to host (${formatSeconds(hostLive.positionSeconds)})`
+    );
   };
 
-  const handleSaveRoomSettings = async (next: {
-    controls: RoomControlsMode;
-    locked: boolean;
-  }): Promise<string | null> => {
+  const handleSaveRoomSettings = async (next: { locked: boolean }): Promise<string | null> => {
+    if (!isHost) return 'Only the host can change room settings.';
     const { error } = await updateRoomSettings({
       roomId: currentRoom.id,
-      controls: next.controls,
       locked: next.locked,
     });
     if (!error) {
       setCurrentRoom((prev) => ({
         ...prev,
-        controls: next.controls,
         locked: next.locked,
       }));
     }
@@ -1443,6 +1562,7 @@ export function RoomPage({
   };
 
   const handleAddToQueue = async (movie: PickerMovieSelection): Promise<string | null> => {
+    if (!isHost) return 'Only the host can add movies to the queue.';
     const currentQueue = normalizeQueueItems(latestRoomRef.current.queue);
     if (currentQueue.length >= QUEUE_MAX_ITEMS) {
       return `Queue is full (max ${QUEUE_MAX_ITEMS} movies).`;
@@ -1470,7 +1590,7 @@ export function RoomPage({
   };
 
   const handlePlayQueuedItem = async (item: QueueItem) => {
-    if (!canControlPlayback || queueBusyId) return;
+    if (!isHost || queueBusyId) return;
     setQueueBusyId(item.id);
 
     let resolvedUrl = item.videoUrl ?? null;
@@ -1687,10 +1807,10 @@ export function RoomPage({
                   </div>
                   <button
                     type="button"
-                    onClick={canControlPlayback ? () => setPickerOpen(true) : onBack}
+                    onClick={isHost ? () => setPickerOpen(true) : onBack}
                     className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
                   >
-                    <span>{canControlPlayback ? 'Pick another movie' : 'Back to MovieNest'}</span>
+                    <span>{isHost ? 'Pick another movie' : 'Back to MovieNest'}</span>
                   </button>
                 </div>
               ) : (
@@ -1701,12 +1821,10 @@ export function RoomPage({
                   playsInline
                   onLoadedMetadata={(e) => {
                     setPlayerReady(true);
-                    const target = independentModeRef.current
-                      ? initialJoinTargetRef.current
-                      : {
-                          isPlaying: latestRoomRef.current.is_playing,
-                          positionSeconds: computeLiveRoomPosition(latestRoomRef.current),
-                        };
+                    const target =
+                      !latestIsHostRef.current && ownPaceRef.current
+                        ? initialJoinTargetRef.current
+                        : getHostLiveState(latestServerRoomRef.current);
 
                     const needsSeekOrPlay = target.positionSeconds > 1 || target.isPlaying;
                     markProgrammaticChange(needsSeekOrPlay ? 2000 : 600);
@@ -1725,12 +1843,20 @@ export function RoomPage({
                   onPlay={(e) => {
                     setLocalIsPlaying(true);
                     if (
-                      !isProgrammaticChangeRef.current &&
-                      !isApplyingRemoteRef.current &&
-                      !joinChoicePendingRef.current &&
-                      !independentModeRef.current
+                      isProgrammaticChangeRef.current ||
+                      isApplyingRemoteRef.current ||
+                      joinChoicePendingRef.current
                     ) {
-                      pushLocalState(true, e.currentTarget.currentTime, 'play');
+                      return;
+                    }
+                    if (latestIsHostRef.current) {
+                      if (pushDebounceTimerRef.current) {
+                        window.clearTimeout(pushDebounceTimerRef.current);
+                        pushDebounceTimerRef.current = null;
+                      }
+                      void commitHostPlaybackUpdate(true, e.currentTarget.currentTime, 'play', false);
+                    } else {
+                      enterOwnPace();
                     }
                   }}
                   onPause={(e) => {
@@ -1739,33 +1865,46 @@ export function RoomPage({
                       saveRoomHistoryProgress(false);
                     }
                     if (
-                      !isProgrammaticChangeRef.current &&
-                      !isApplyingRemoteRef.current &&
-                      !joinChoicePendingRef.current &&
-                      !independentModeRef.current &&
-                      !e.currentTarget.ended
+                      isProgrammaticChangeRef.current ||
+                      isApplyingRemoteRef.current ||
+                      joinChoicePendingRef.current ||
+                      e.currentTarget.ended
                     ) {
-                      pushLocalState(false, e.currentTarget.currentTime, 'pause');
+                      return;
+                    }
+                    if (latestIsHostRef.current) {
+                      if (pushDebounceTimerRef.current) {
+                        window.clearTimeout(pushDebounceTimerRef.current);
+                        pushDebounceTimerRef.current = null;
+                      }
+                      void commitHostPlaybackUpdate(
+                        false,
+                        e.currentTarget.currentTime,
+                        'pause',
+                        false
+                      );
+                    } else {
+                      enterOwnPace();
                     }
                   }}
                   onSeeked={(e) => {
                     if (
-                      !isProgrammaticChangeRef.current &&
-                      !isApplyingRemoteRef.current &&
-                      !joinChoicePendingRef.current &&
-                      !independentModeRef.current
+                      isProgrammaticChangeRef.current ||
+                      isApplyingRemoteRef.current ||
+                      joinChoicePendingRef.current
                     ) {
-                      pushLocalState(
-                        !e.currentTarget.paused,
-                        e.currentTarget.currentTime,
-                        'seek'
-                      );
+                      return;
+                    }
+                    if (latestIsHostRef.current) {
+                      pushHostSeek(!e.currentTarget.paused, e.currentTarget.currentTime);
+                    } else {
+                      enterOwnPace();
                     }
                   }}
                   onEnded={() => {
                     setLocalIsPlaying(false);
                     saveRoomHistoryProgress(true);
-                    if (!independentModeRef.current) {
+                    if (latestIsHostRef.current) {
                       void advanceQueueOnEnd();
                     }
                   }}
@@ -1797,7 +1936,7 @@ export function RoomPage({
                     <span>Open on YouTube</span>
                     <ExternalLink className="h-4 w-4" aria-hidden="true" />
                   </a>
-                  {canControlPlayback && (
+                  {isHost && (
                     <button
                       type="button"
                       onClick={() => setPickerOpen(true)}
@@ -1868,24 +2007,24 @@ export function RoomPage({
                 ))}
               </div>
             )}
-            {/* Independent mode banner attached cleanly below the video frame */}
-            {independentMode && !joinChoicePending && (
+            {/* Own pace banner attached below the video frame for non-hosts */}
+            {!isHost && ownPace && !joinChoicePending && (
               <div
                 role="status"
                 className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#181820] px-4 py-2.5 text-xs text-zinc-200"
               >
-                <span>You&apos;re watching on your own. Sync with room</span>
+                <span>You&apos;re on your own pace · Sync to host</span>
                 <button
                   type="button"
-                  onClick={handleSyncWithRoom}
-                  disabled={syncingToRoom}
+                  onClick={handleSyncToHost}
+                  disabled={syncingToHost}
                   className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-[#E50914] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw
-                    className={`h-3.5 w-3.5 ${syncingToRoom ? 'animate-spin' : ''}`}
+                    className={`h-3.5 w-3.5 ${syncingToHost ? 'animate-spin' : ''}`}
                     aria-hidden="true"
                   />
-                  <span>{syncingToRoom ? 'Syncing...' : 'Sync with room'}</span>
+                  <span>{syncingToHost ? 'Syncing...' : 'Sync to host'}</span>
                 </button>
               </div>
             )}
@@ -1900,70 +2039,90 @@ export function RoomPage({
                     <button
                       type="button"
                       onClick={handleTogglePlayPause}
-                      disabled={!playerReady || (!independentMode && !canControlPlayback)}
+                      disabled={!playerReady}
                       className="inline-flex min-h-[42px] items-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      {(independentMode ? localIsPlaying : roomState.isPlaying) ? (
+                      {localIsPlaying ? (
                         <>
                           <Pause className="h-4 w-4 fill-current" aria-hidden="true" />
-                          <span>{independentMode ? 'Pause' : 'Pause for All'}</span>
+                          <span>{isHost ? 'Pause for All' : 'Pause'}</span>
                         </>
                       ) : (
                         <>
                           <Play className="h-4 w-4 fill-current" aria-hidden="true" />
-                          <span>{independentMode ? 'Play' : 'Play for All'}</span>
+                          <span>{isHost ? 'Play for All' : 'Play'}</span>
                         </>
                       )}
                     </button>
 
-                    {isHost && !independentMode && (
-                      <button
-                        type="button"
-                        onClick={handleStartTogether}
-                        disabled={!playerReady || countdownValue !== null}
-                        className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#E50914]/50 bg-[#1b1013] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:border-[#E50914] active:bg-[#2a151a] disabled:opacity-45 cursor-pointer"
-                      >
-                        <Timer className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
-                        <span>Start together</span>
-                      </button>
-                    )}
+                    {isHost ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handleSyncEveryoneToMe}
+                          disabled={!playerReady}
+                          className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#E50914]/50 bg-[#1b1013] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:border-[#E50914] active:bg-[#2a151a] disabled:opacity-45 cursor-pointer"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                          <span>Sync everyone to me</span>
+                        </button>
 
-                    {!independentMode && (
+                        <button
+                          type="button"
+                          onClick={handleStartTogether}
+                          disabled={!playerReady || countdownValue !== null}
+                          className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] disabled:opacity-45 cursor-pointer"
+                        >
+                          <Timer className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                          <span>Start together</span>
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        onClick={handleManualResync}
-                        disabled={!playerReady || resyncing}
+                        onClick={handleSyncToHost}
+                        disabled={!playerReady || syncingToHost}
                         className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] disabled:opacity-50 cursor-pointer"
                       >
                         <RefreshCw
-                          className={`h-3.5 w-3.5 ${resyncing ? 'animate-spin' : ''}`}
+                          className={`h-3.5 w-3.5 ${syncingToHost ? 'animate-spin' : ''}`}
                           aria-hidden="true"
                         />
-                        <span>{resyncing ? 'Syncing...' : 'Sync Player'}</span>
+                        <span>{syncingToHost ? 'Syncing...' : 'Sync to host'}</span>
                       </button>
                     )}
                   </>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => setPickerOpen(true)}
-                  disabled={!canControlPlayback || independentMode}
-                  className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Video className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
-                  <span>Change video</span>
-                </button>
+                {isHost && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(true)}
+                    className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] cursor-pointer"
+                  >
+                    <Video className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                    <span>Change video</span>
+                  </button>
+                )}
 
                 <span className="font-mono text-xs text-zinc-300 tabular-nums px-1">
-                  {independentMode ? 'Own pace' : 'Room time'} · {formatSeconds(roomTimeSeconds)}
+                  {isHost
+                    ? 'Room time'
+                    : ownPace
+                      ? 'Own pace'
+                      : 'Following host'}{' '}
+                  · {formatSeconds(roomTimeSeconds)}
                 </span>
               </div>
 
-              {!canControlPlayback && !independentMode && (
+              {!isHost && (
                 <p className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
-                  <Lock className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
-                  <span>Host controls playback</span>
+                  <Crown className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                  <span>
+                    {ownPace
+                      ? "You're on your own pace · Your controls only affect you"
+                      : 'Host controls room playback · Pausing or seeking switches to your own pace'}
+                  </span>
                 </p>
               )}
             </div>
@@ -2000,7 +2159,7 @@ export function RoomPage({
             <RoomQueuePanel
               queue={queue}
               isHost={isHost}
-              canControlPlayback={canControlPlayback}
+              canControlPlayback={isHost}
               busyItemId={queueBusyId}
               onOpenPicker={() => setPickerOpen(true)}
               onPlayQueuedItem={handlePlayQueuedItem}
@@ -2080,7 +2239,7 @@ export function RoomPage({
               <RoomQueuePanel
                 queue={queue}
                 isHost={isHost}
-                canControlPlayback={canControlPlayback}
+                canControlPlayback={isHost}
                 busyItemId={queueBusyId}
                 onOpenPicker={() => setPickerOpen(true)}
                 onPlayQueuedItem={handlePlayQueuedItem}
@@ -2107,15 +2266,14 @@ export function RoomPage({
 
       <RoomSettingsModal
         open={settingsOpen && isHost}
-        controls={controlsMode}
         locked={isLocked}
         onClose={() => setSettingsOpen(false)}
         onSaveSettings={handleSaveRoomSettings}
       />
 
       <RoomVideoPickerModal
-        open={pickerOpen && canControlPlayback && !independentMode}
-        canChangeVideo={canControlPlayback && !independentMode}
+        open={pickerOpen && isHost}
+        canChangeVideo={isHost}
         queue={queue}
         sharedLibrary={safeLibrary}
         onClose={() => setPickerOpen(false)}
@@ -2123,7 +2281,7 @@ export function RoomPage({
         onAddToQueue={handleAddToQueue}
       />
 
-      {/* Late-joiner bottom sheet (phones) / centered modal (laptops) */}
+      {/* Non-host late-joiner bottom sheet (phones) / centered modal (laptops) */}
       {joinChoicePending && (
         <div
           role="dialog"
@@ -2136,23 +2294,30 @@ export function RoomPage({
               id="join-choice-title"
               className="font-display text-xl font-bold text-white tabular-nums"
             >
-              The movie is already at {formatSeconds(joinModalLiveSeconds)}
+              The movie is already at {formatSeconds(joinModalState.positionSeconds)}
             </h2>
-            <p className="mt-1.5 text-sm text-zinc-400">
-              Join everyone at the live timestamp or watch from 0:00 at your own pace.
-            </p>
+
+            {joinModalState.hostAway ? (
+              <p className="mt-1.5 text-sm font-medium text-amber-300">
+                Host seems to be away
+              </p>
+            ) : (
+              <p className="mt-1.5 text-sm text-zinc-400">
+                Continue watching with the host or start from 0:00 at your own pace.
+              </p>
+            )}
 
             <div className="mt-5 flex flex-col gap-2.5">
               <button
                 type="button"
-                onClick={handleJoinLive}
+                onClick={handleContinueWithHost}
                 className="inline-flex min-h-[46px] w-full items-center justify-center rounded-lg bg-[#E50914] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
               >
-                Join live
+                Continue with host
               </button>
               <button
                 type="button"
-                onClick={handleJoinIndependent}
+                onClick={handleStartFromBeginning}
                 className="inline-flex min-h-[46px] w-full items-center justify-center rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-4 py-2.5 text-sm font-medium text-zinc-100 transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
               >
                 Start from the beginning

@@ -27,6 +27,7 @@ interface UseRoomChannelsParams {
     positionSeconds: number;
   }) => void;
   onCountdownReceived: (positionSeconds: number) => void;
+  onHostSyncReceived: (payload: { positionSeconds: number; isPlaying: boolean }) => void;
   onPresenceNotice: (text: string) => void;
 }
 
@@ -48,6 +49,7 @@ export function useRoomChannels({
   onReactionReceived,
   onActivityReceived,
   onCountdownReceived,
+  onHostSyncReceived,
   onPresenceNotice,
 }: UseRoomChannelsParams) {
   const cleanRoomCode = typeof roomCode === 'string' ? roomCode.trim().toUpperCase() : '';
@@ -88,6 +90,8 @@ export function useRoomChannels({
   onActivityReceivedRef.current = onActivityReceived;
   const onCountdownReceivedRef = useRef(onCountdownReceived);
   onCountdownReceivedRef.current = onCountdownReceived;
+  const onHostSyncReceivedRef = useRef(onHostSyncReceived);
+  onHostSyncReceivedRef.current = onHostSyncReceived;
   const onPresenceNoticeRef = useRef(onPresenceNotice);
   onPresenceNoticeRef.current = onPresenceNotice;
 
@@ -300,6 +304,19 @@ export function useRoomChannels({
           if (!data || data.clientId === clientIdRef.current) return;
           onCountdownReceivedRef.current(Math.max(0, data.positionSeconds ?? 0));
         })
+        .on('broadcast', { event: 'host_sync' }, ({ payload }) => {
+          if (!isEffectActive) return;
+          const data = payload as {
+            clientId?: string;
+            positionSeconds?: number;
+            isPlaying?: boolean;
+          } | null;
+          if (!data || data.clientId === clientIdRef.current) return;
+          onHostSyncReceivedRef.current({
+            positionSeconds: Math.max(0, data.positionSeconds ?? 0),
+            isPlaying: Boolean(data.isPlaying),
+          });
+        })
         .on('presence', { event: 'sync' }, () => {
           syncPresenceList();
         })
@@ -497,6 +514,18 @@ export function useRoomChannels({
     });
   }, []);
 
+  const sendHostSync = useCallback((positionSeconds: number, isPlaying: boolean) => {
+    void liveChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'host_sync',
+      payload: {
+        clientId: clientIdRef.current,
+        positionSeconds: Math.max(0, Math.floor(positionSeconds)),
+        isPlaying: Boolean(isPlaying),
+      },
+    });
+  }, []);
+
   return {
     syncStatus,
     participants,
@@ -507,5 +536,6 @@ export function useRoomChannels({
     sendReaction,
     sendActivity,
     sendCountdown,
+    sendHostSync,
   };
 }
