@@ -26,8 +26,8 @@ export function Sidebar({ activeNav, onSelectNav }: SidebarProps) {
       aria-label="Primary sidebar navigation"
       className="hidden lg:flex lg:w-56 lg:shrink-0 lg:flex-col lg:sticky lg:top-0 lg:h-screen border-r border-white/10 bg-[#0A0A0E]"
     >
-      <div className="flex h-16 items-center gap-2.5 border-b border-white/10 px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E50914] shadow-[0_0_16px_rgba(229,9,20,0.45)]">
+      <div className="flex h-16 items-center gap-2.5 border-b border-[#2a2a33] px-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E50914]">
           <Clapperboard className="h-4 w-4 text-white" aria-hidden="true" />
         </div>
         <button
@@ -51,7 +51,7 @@ export function Sidebar({ activeNav, onSelectNav }: SidebarProps) {
               aria-current={isActive ? 'page' : undefined}
               className={`flex w-full min-h-[44px] items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
                 isActive
-                  ? 'bg-[#E50914]/15 text-white border border-[#E50914]/40 shadow-[0_0_20px_rgba(229,9,20,0.12)]'
+                  ? 'bg-[#E50914]/15 text-white border border-[#E50914]/50'
                   : 'text-zinc-400 border border-transparent hover:bg-white/5 hover:text-white'
               }`}
             >
@@ -81,7 +81,7 @@ export function MobileBottomNav({ activeNav, onSelectNav }: SidebarProps) {
   return (
     <nav
       aria-label="Mobile navigation"
-      className="fixed inset-x-0 bottom-0 z-30 grid h-14 grid-cols-3 border-t border-white/10 bg-[#0A0A0E]/95 backdrop-blur-md lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 grid h-14 grid-cols-3 border-t border-[#2a2a33] bg-[#0A0A0E] lg:hidden"
     >
       {NAV_ITEMS.map((item) => {
         const Icon = item.icon;

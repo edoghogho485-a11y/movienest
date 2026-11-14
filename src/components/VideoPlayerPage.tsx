@@ -35,17 +35,17 @@ function RelatedVideoCard({
       onClick={() => onSelect(item)}
       className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] rounded-xl cursor-pointer"
     >
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-[#111116] transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:border-[#E50914]/55">
+      <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[#2a2a33] bg-[#14141a] transition-colors group-hover:border-[#E50914]">
         {!imgError ? (
           <img
             src={item.thumbnail}
             alt={item.title}
             referrerPolicy="no-referrer"
             onError={() => setImgError(true)}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-[#1C0B0E] via-[#111116] to-[#08080A] p-3">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#14141a] p-3">
             <Film className="h-6 w-6 text-[#E50914]/85" aria-hidden="true" />
             <span className="text-xs font-medium text-zinc-200 text-center line-clamp-1">
               {item.title}
@@ -195,7 +195,7 @@ export function VideoPlayerPage({
         <button
           type="button"
           onClick={() => onCreateRoomWithVideo(video)}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white whitespace-nowrap shrink-0 shadow-[0_0_24px_rgba(229,9,20,0.35)] transition-colors duration-150 hover:bg-[#F40612] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white whitespace-nowrap shrink-0 transition-colors duration-150 hover:bg-[#F40612] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
         >
           <Users className="h-4 w-4" aria-hidden="true" />
           <span>Create Room with this video</span>

@@ -446,7 +446,7 @@ export default function App() {
 
               {activeNav === 'watch-party' ? (
                 <section className="px-4 py-8 sm:px-6 lg:px-8 space-y-8">
-                  <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#1B090C] via-[#111116] to-[#08080A] p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.55)]">
+                  <div className="rounded-2xl border border-[#2a2a33] bg-[#14141a] p-6 sm:p-8">
                     <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
                       Start a MovieNest Watch Party
                     </h1>
@@ -458,7 +458,7 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => openCreateRoom()}
-                        className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_24px_rgba(229,9,20,0.4)] transition-colors hover:bg-[#F40612] cursor-pointer"
+                        className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] cursor-pointer"
                       >
                         <Play className="h-4 w-4 fill-current" aria-hidden="true" />
                         <span>Create Room</span>

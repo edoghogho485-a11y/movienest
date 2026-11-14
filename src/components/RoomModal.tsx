@@ -180,7 +180,7 @@ export function RoomModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="room-modal-title"
@@ -257,7 +257,7 @@ export function RoomModal({
               <button
                 type="button"
                 onClick={() => onOpenRoom(createdRoom)}
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(229,9,20,0.3)] transition-colors hover:bg-[#F40612] cursor-pointer"
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] cursor-pointer"
               >
                 <span>Open Room</span>
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />

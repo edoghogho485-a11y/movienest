@@ -141,8 +141,8 @@ export function PasteYouTubeBar({
     <div
       className={
         isHome
-          ? 'rounded-2xl border border-white/10 bg-[#111116] p-4 sm:p-5'
-          : 'rounded-xl border border-white/10 bg-[#14141B] p-3.5'
+          ? 'rounded-2xl border border-[#2a2a33] bg-[#14141a] p-4 sm:p-5'
+          : 'rounded-xl border border-[#2a2a33] bg-[#14141a] p-3.5'
       }
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -225,7 +225,7 @@ export function PasteYouTubeBar({
                       thumbnail: thumbnailUrl,
                     })
                   }
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white whitespace-nowrap shadow-[0_0_20px_rgba(229,9,20,0.28)] transition-colors hover:bg-[#F40612] cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] cursor-pointer"
                 >
                   <Users className="h-4 w-4" aria-hidden="true" />
                   <span>Create Room with this</span>

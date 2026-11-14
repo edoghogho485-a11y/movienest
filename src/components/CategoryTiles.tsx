@@ -57,7 +57,8 @@ export function CategoryTiles({ onSelectGenre }: CategoryTilesProps) {
         <span className="text-xs text-zinc-400">Jump to a genre</span>
       </div>
 
-      <div className="mt-3.5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+      {/* Simple CSS grid: 2 columns on phones, 4 to 6 columns on laptops; no blur/glow/transform layers */}
+      <div className="mt-3.5 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
         {GENRE_LIST.map((genre) => {
           const Icon = ICON_MAP[genre.icon];
           return (
@@ -65,12 +66,12 @@ export function CategoryTiles({ onSelectGenre }: CategoryTilesProps) {
               key={genre.slug}
               type="button"
               onClick={() => onSelectGenre(genre)}
-              className="group flex min-h-[48px] items-center gap-2.5 rounded-xl border border-white/10 bg-[#111116] px-3 py-2.5 text-left transition-all hover:border-[#E50914]/50 hover:bg-[#181820] hover:shadow-[0_0_18px_rgba(229,9,20,0.14)] cursor-pointer"
+              className="flex h-16 w-full items-center gap-3 rounded-xl border border-[#2a2a33] bg-[#14141a] px-3 text-left transition-colors hover:border-[#E50914] hover:bg-[#1b1b24] active:bg-[#1f1f29] cursor-pointer"
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1A1A24] text-[#E50914] transition-colors group-hover:bg-[#E50914] group-hover:text-white">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#20202a] text-[#E50914]">
                 <Icon className="h-4 w-4" aria-hidden="true" />
-              </div>
-              <span className="text-xs sm:text-sm font-medium text-zinc-100 line-clamp-1">
+              </span>
+              <span className="min-w-0 flex-1 text-xs sm:text-sm font-medium text-white line-clamp-2 leading-tight">
                 {genre.name}
               </span>
             </button>

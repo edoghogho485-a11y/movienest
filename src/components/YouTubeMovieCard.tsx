@@ -62,24 +62,24 @@ export function YouTubeMovieCard({
 
   return (
     <article
-      className={`flex flex-col rounded-xl border border-white/10 bg-[#111116] p-2.5 transition-all hover:border-[#E50914]/45 hover:shadow-[0_0_24px_rgba(229,9,20,0.14)] ${className}`}
+      className={`flex flex-col rounded-xl border border-[#2a2a33] bg-[#14141a] p-2.5 transition-colors hover:border-[#E50914] ${className}`}
     >
       <button
         type="button"
         onClick={() => onWatch(video)}
         className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] rounded-lg cursor-pointer"
       >
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#181820]">
+        <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#1b1b24]">
           {!imgError ? (
             <img
               src={video.thumbnail}
               alt={video.title}
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
-              className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+              className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-[#1C0B0E] via-[#111116] to-[#08080A] p-3">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#14141a] p-3">
               <Film className="h-6 w-6 text-[#E50914]/85" aria-hidden="true" />
               <span className="text-xs text-zinc-200 text-center line-clamp-1">
                 {video.title}

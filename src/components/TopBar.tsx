@@ -42,7 +42,7 @@ export function TopBar({
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/10 bg-[#08080A]/92 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-[#2a2a33] bg-[#0A0A0E]">
       <div className="flex h-14 lg:h-16 items-center justify-between gap-2.5 px-4 sm:px-6 lg:px-8">
         {/* Phone logo (hidden on laptop because Sidebar renders the brand) */}
         <button
@@ -50,7 +50,7 @@ export function TopBar({
           onClick={onHomeClick}
           className="flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] lg:hidden cursor-pointer shrink-0"
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#E50914] shadow-[0_0_12px_rgba(229,9,20,0.4)]">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#E50914]">
             <Clapperboard className="h-3.5 w-3.5 text-white" aria-hidden="true" />
           </div>
           <span className="font-display text-base font-bold tracking-tight text-white whitespace-nowrap">
@@ -125,7 +125,7 @@ export function TopBar({
           <button
             type="button"
             onClick={onCreateRoom}
-            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-white whitespace-nowrap shrink-0 shadow-[0_0_20px_rgba(229,9,20,0.3)] transition-colors hover:bg-[#F40612] cursor-pointer"
+            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:bg-[#F40612] cursor-pointer"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             <span>Create Room</span>

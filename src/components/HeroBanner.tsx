@@ -182,9 +182,9 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
       <div
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
-        className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#111116] shadow-[0_20px_50px_rgba(0,0,0,0.65)]"
+        className="relative overflow-hidden rounded-2xl border border-[#2a2a33] bg-[#14141a]"
       >
-        <div className="relative min-h-[290px] sm:min-h-[360px] lg:min-h-[410px] w-full">
+        <div className="relative min-h-[260px] sm:min-h-[340px] lg:min-h-[400px] w-full">
           {/* Backdrop YouTube thumbnail */}
           {!hasImgError ? (
             <img
@@ -195,30 +195,30 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
               onError={() =>
                 setImgErrors((prev) => ({ ...prev, [currentSlide.videoId]: true }))
               }
-              className="absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-500"
+              className="absolute inset-0 h-full w-full object-cover object-center"
             />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1A090B] via-[#111116] to-[#08080A]">
-              <Film className="h-12 w-12 text-[#E50914]/50" aria-hidden="true" />
+            <div className="absolute inset-0 flex items-center justify-center bg-[#14141a]">
+              <Film className="h-12 w-12 text-[#E50914]/60" aria-hidden="true" />
             </div>
           )}
 
-          {/* Cinematic dark vignette overlays */}
+          {/* Dark gradient scrim for text legibility */}
           <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#08080A] via-[#08080A]/80 to-[#08080A]/25"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#08080A] via-[#08080A]/80 to-[#08080A]/30"
             aria-hidden="true"
           />
           <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#08080A] via-transparent to-[#08080A]/40"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#08080A] via-transparent to-[#08080A]/45"
             aria-hidden="true"
           />
 
           {/* Slide content */}
-          <div className="relative z-10 flex min-h-[290px] sm:min-h-[360px] lg:min-h-[410px] flex-col justify-between p-5 sm:p-8 lg:p-10">
+          <div className="relative z-10 flex min-h-[260px] sm:min-h-[340px] lg:min-h-[400px] flex-col justify-between p-5 sm:p-8 lg:p-10">
             {/* Top row: Live lobby presence count */}
             <div className="flex items-center justify-between gap-3">
               <div className="inline-flex items-center gap-2 text-xs font-medium text-zinc-200">
-                <span className="h-2 w-2 rounded-full bg-[#E50914] shadow-[0_0_8px_#E50914]" aria-hidden="true" />
+                <span className="h-2 w-2 rounded-full bg-[#E50914]" aria-hidden="true" />
                 <span className="tabular-nums">{onlineCount} online now</span>
                 <span className="text-zinc-500" aria-hidden="true">
                   ·
@@ -234,7 +234,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
                       setActiveIndex((prev) => (prev - 1 + slides.length) % slides.length)
                     }
                     aria-label="Previous featured movie"
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white transition-colors hover:border-white/40 hover:bg-black/80 cursor-pointer"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#2a2a33] bg-[#14141a] text-white transition-colors hover:border-white/40 cursor-pointer"
                   >
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   </button>
@@ -242,7 +242,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
                     type="button"
                     onClick={() => setActiveIndex((prev) => (prev + 1) % slides.length)}
                     aria-label="Next featured movie"
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white transition-colors hover:border-white/40 hover:bg-black/80 cursor-pointer"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#2a2a33] bg-[#14141a] text-white transition-colors hover:border-white/40 cursor-pointer"
                   >
                     <ChevronRight className="h-4 w-4" aria-hidden="true" />
                   </button>
@@ -260,7 +260,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
                 <button
                   type="button"
                   onClick={handleWatchTogether}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E50914] px-6 py-2.5 text-sm font-semibold text-white whitespace-nowrap shadow-[0_0_26px_rgba(229,9,20,0.45)] transition-colors hover:bg-[#F40612] active:scale-[0.98] cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E50914] px-6 py-2.5 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] cursor-pointer"
                 >
                   <Play className="h-4 w-4 fill-current" aria-hidden="true" />
                   <span>Watch Together</span>
@@ -279,7 +279,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
                           aria-selected={isActive}
                           aria-label={`Show slide ${index + 1}: ${slide.title}`}
                           onClick={() => setActiveIndex(index)}
-                          className={`h-2 rounded-full transition-all cursor-pointer ${
+                          className={`h-2 rounded-full transition-colors cursor-pointer ${
                             isActive
                               ? 'w-7 bg-[#E50914]'
                               : 'w-2 bg-white/35 hover:bg-white/60'
@@ -296,7 +296,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
       </div>
 
       {/* Compact 4-item capability strip underneath hero */}
-      <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-[#111116] px-4 py-3 sm:grid-cols-4 sm:gap-4">
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl border border-[#2a2a33] bg-[#14141a] px-4 py-3 sm:grid-cols-4 sm:gap-4">
         {FEATURE_STRIP.map((item) => {
           const Icon = item.icon;
           return (
