@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,7 +10,7 @@ import {
   Tv,
 } from 'lucide-react';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
-import { getSearchCache, supabase } from '../lib/supabase';
+import { getSearchCache } from '../lib/supabase';
 import {
   getYouTubeThumbnail,
   hasYouTubeApiKey,
@@ -27,7 +27,8 @@ interface HeroSlide {
 }
 
 interface HeroBannerProps {
-  onWatchTogether: (video: RoomVideoOption) => void;
+  onlineCount: number;
+  onWatchClick: (video: RoomVideoOption) => void;
 }
 
 const SLIDE_INTERVAL_MS = 6000;
@@ -49,19 +50,11 @@ function getSampleFallbackSlides(): HeroSlide[] {
   }));
 }
 
-export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
+export function HeroBanner({ onlineCount, onWatchClick }: HeroBannerProps) {
   const [slides, setSlides] = useState<HeroSlide[]>(() => getSampleFallbackSlides());
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [onlineCount, setOnlineCount] = useState<number>(1);
   const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
-
-  // Unique presence key for this visitor in the global "lobby" channel
-  const lobbyKeyRef = useRef<string>(
-    typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `guest-${Math.random().toString(36).slice(2, 10)}`
-  );
 
   // 1. Load up to 4 featured slides from cached Nollywood & Full Movies results
   useEffect(() => {
@@ -122,32 +115,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
     };
   }, []);
 
-  // 2. Join Supabase Realtime presence on channel "lobby" for live online count
-  useEffect(() => {
-    const channel = supabase.channel('lobby', {
-      config: {
-        presence: { key: lobbyKeyRef.current },
-      },
-    });
-
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState();
-        const uniqueClients = Object.keys(state).length;
-        setOnlineCount(Math.max(1, uniqueClients));
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({ online: true });
-        }
-      });
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, []);
-
-  // 3. Auto-advance slides every 6 seconds unless paused or reduced-motion is requested
+  // 2. Auto-advance slides every 6 seconds unless paused or reduced-motion is requested
   useEffect(() => {
     if (paused || slides.length <= 1) return;
     const prefersReducedMotion =
@@ -165,8 +133,8 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
   const currentSlide = slides[activeIndex] ?? slides[0];
   const hasImgError = Boolean(imgErrors[currentSlide.videoId]);
 
-  const handleWatchTogether = () => {
-    onWatchTogether({
+  const handleHeroWatch = () => {
+    onWatchClick({
       id: currentSlide.videoId,
       youtubeId: currentSlide.videoId,
       title: currentSlide.title,
@@ -234,7 +202,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
                       setActiveIndex((prev) => (prev - 1 + slides.length) % slides.length)
                     }
                     aria-label="Previous featured movie"
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#2a2a33] bg-[#14141a] text-white transition-colors hover:border-white/40 cursor-pointer"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#2a2a33] bg-[#14141a] text-white transition-colors hover:border-white/40 active:bg-[#252530] cursor-pointer"
                   >
                     <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   </button>
@@ -242,7 +210,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
                     type="button"
                     onClick={() => setActiveIndex((prev) => (prev + 1) % slides.length)}
                     aria-label="Next featured movie"
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#2a2a33] bg-[#14141a] text-white transition-colors hover:border-white/40 cursor-pointer"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-[#2a2a33] bg-[#14141a] text-white transition-colors hover:border-white/40 active:bg-[#252530] cursor-pointer"
                   >
                     <ChevronRight className="h-4 w-4" aria-hidden="true" />
                   </button>
@@ -250,7 +218,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
               )}
             </div>
 
-            {/* Bottom row: Title + Watch Together CTA + Slide dots */}
+            {/* Bottom row: Title + Watch Now CTA + Slide dots */}
             <div className="max-w-2xl">
               <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl line-clamp-2 leading-[1.15]">
                 {currentSlide.title}
@@ -259,11 +227,11 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
               <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
                 <button
                   type="button"
-                  onClick={handleWatchTogether}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E50914] px-6 py-2.5 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] cursor-pointer"
+                  onClick={handleHeroWatch}
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#E50914] px-6 py-2.5 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
                 >
                   <Play className="h-4 w-4 fill-current" aria-hidden="true" />
-                  <span>Watch Together</span>
+                  <span>Watch Now</span>
                 </button>
 
                 {/* Slide indicator dots */}
@@ -279,7 +247,7 @@ export function HeroBanner({ onWatchTogether }: HeroBannerProps) {
                           aria-selected={isActive}
                           aria-label={`Show slide ${index + 1}: ${slide.title}`}
                           onClick={() => setActiveIndex(index)}
-                          className={`h-2 rounded-full transition-colors cursor-pointer ${
+                          className={`h-2 rounded-full transition-colors active:opacity-70 cursor-pointer ${
                             isActive
                               ? 'w-7 bg-[#E50914]'
                               : 'w-2 bg-white/35 hover:bg-white/60'

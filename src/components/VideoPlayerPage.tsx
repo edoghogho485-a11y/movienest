@@ -1,7 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ExternalLink, Film, Lock, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  ExternalLink,
+  Film,
+  Lock,
+  Share2,
+  Users,
+} from 'lucide-react';
 import { LibraryVideo } from '../data/libraryVideos';
-import { loadYouTubeIframeAPI, YTPlayer } from '../lib/youtube';
+import { getWatchAloneLink, shareOrCopyLink } from '../lib/share';
+import {
+  fetchYouTubeTitle,
+  loadYouTubeIframeAPI,
+  YTPlayer,
+} from '../lib/youtube';
 
 export interface WatchableVideo {
   id: string;
@@ -16,7 +29,7 @@ interface VideoPlayerPageProps {
   video: WatchableVideo;
   relatedVideos: LibraryVideo[];
   onBack: () => void;
-  onCreateRoomWithVideo: (video: WatchableVideo) => void;
+  onInviteFriends: (video: WatchableVideo, currentSeconds: number) => void;
   onSelectSampleVideo: (video: LibraryVideo) => void;
 }
 
@@ -33,7 +46,7 @@ function RelatedVideoCard({
     <button
       type="button"
       onClick={() => onSelect(item)}
-      className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] rounded-xl cursor-pointer"
+      className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-80 rounded-xl cursor-pointer"
     >
       <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[#2a2a33] bg-[#14141a] transition-colors group-hover:border-[#E50914]">
         {!imgError ? (
@@ -68,16 +81,33 @@ function RelatedVideoCard({
   );
 }
 
+// Solo player page (?watch=VIDEO_ID): zero room, zero invite code, zero chat, zero presence, zero Supabase writes
 export function VideoPlayerPage({
   video,
   relatedVideos,
   onBack,
-  onCreateRoomWithVideo,
+  onInviteFriends,
   onSelectSampleVideo,
 }: VideoPlayerPageProps) {
   const [embedBlocked, setEmbedBlocked] = useState(false);
+  const [resolvedTitle, setResolvedTitle] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
+
+  // If opened directly via ?watch=VIDEO_ID without a preloaded title, resolve title via oEmbed
+  useEffect(() => {
+    setResolvedTitle(null);
+    if (!video.title.startsWith('YouTube Video (')) return;
+
+    let cancelled = false;
+    fetchYouTubeTitle(video.youtubeId).then((fetched) => {
+      if (!cancelled) setResolvedTitle(fetched);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [video.youtubeId, video.title]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +141,6 @@ export function VideoPlayerPage({
             }
           },
           onError: (event) => {
-            // YouTube error 101 or 150 means the owner blocked embedding
             if (!cancelled && (event.data === 101 || event.data === 150)) {
               setEmbedBlocked(true);
             }
@@ -133,21 +162,52 @@ export function VideoPlayerPage({
     };
   }, [video.youtubeId]);
 
+  const displayTitle = resolvedTitle ?? video.title;
+
+  const handleShareVideo = async () => {
+    const shareUrl = getWatchAloneLink(video.youtubeId);
+    const result = await shareOrCopyLink({
+      title: displayTitle,
+      text: `Watch "${displayTitle}" on MovieNest`,
+      url: shareUrl,
+    });
+    if (result === 'copied') {
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 2000);
+    }
+  };
+
+  const handleInviteFriends = () => {
+    let currentTime = 0;
+    try {
+      currentTime = playerRef.current?.getCurrentTime() ?? 0;
+    } catch {
+      currentTime = 0;
+    }
+    onInviteFriends(
+      {
+        ...video,
+        title: displayTitle,
+      },
+      Math.max(0, Math.floor(currentTime))
+    );
+  };
+
   return (
     <section className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         <span>Back to MovieNest</span>
       </button>
 
-      <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-[#111116] shadow-2xl">
+      <div className="mt-4 overflow-hidden rounded-2xl border border-[#2a2a33] bg-[#14141a]">
         {embedBlocked ? (
           <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#181820]">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#2a2a33] bg-[#1b1b24]">
               <Lock className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
             </div>
             <div className="max-w-md space-y-1.5">
@@ -163,7 +223,7 @@ export function VideoPlayerPage({
               href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612]"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710]"
             >
               <span>Open on YouTube</span>
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -174,12 +234,16 @@ export function VideoPlayerPage({
         )}
       </div>
 
-      <div className="mt-6 flex flex-col gap-5 border-b border-white/10 pb-8 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="mt-6 flex flex-col gap-5 border-b border-[#2a2a33] pb-8 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            {video.title}
+            {displayTitle}
           </h1>
           <p className="mt-1.5 text-sm text-zinc-400">
+            <span>Watching Alone</span>
+            <span className="mx-2" aria-hidden="true">
+              ·
+            </span>
             <span>{video.category}</span>
             {video.duration && (
               <>
@@ -192,14 +256,34 @@ export function VideoPlayerPage({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onCreateRoomWithVideo(video)}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white whitespace-nowrap shrink-0 transition-colors duration-150 hover:bg-[#F40612] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
-        >
-          <Users className="h-4 w-4" aria-hidden="true" />
-          <span>Create Room with this video</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={handleShareVideo}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#14141a] px-4 py-2.5 text-sm font-medium text-white whitespace-nowrap transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+          >
+            {shareCopied ? (
+              <>
+                <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                <span>Link copied</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="h-4 w-4" aria-hidden="true" />
+                <span>Share</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleInviteFriends}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+          >
+            <Users className="h-4 w-4" aria-hidden="true" />
+            <span>Invite friends</span>
+          </button>
+        </div>
       </div>
 
       {relatedVideos.length > 0 && (

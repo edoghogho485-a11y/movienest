@@ -48,7 +48,7 @@ export function TopBar({
         <button
           type="button"
           onClick={onHomeClick}
-          className="flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] lg:hidden cursor-pointer shrink-0"
+          className="flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-75 lg:hidden cursor-pointer shrink-0"
         >
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#E50914]">
             <Clapperboard className="h-3.5 w-3.5 text-white" aria-hidden="true" />
@@ -82,7 +82,7 @@ export function TopBar({
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear search"
-                  className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-zinc-400 hover:text-white cursor-pointer"
+                  className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-zinc-400 hover:text-white active:bg-white/10 cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
@@ -91,7 +91,7 @@ export function TopBar({
             <button
               type="submit"
               disabled={!input.trim() || searching}
-              className="min-h-[40px] rounded-lg border border-white/15 bg-[#14141B] px-3.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:border-white/30 disabled:opacity-50 cursor-pointer"
+              className="min-h-[40px] rounded-lg border border-white/15 bg-[#14141B] px-3.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:border-white/30 active:bg-[#252530] disabled:opacity-50 cursor-pointer"
             >
               {searching ? 'Searching...' : 'Search'}
             </button>
@@ -107,7 +107,8 @@ export function TopBar({
               type="button"
               onClick={() => setMobileSearchOpen((prev) => !prev)}
               aria-label="Toggle movie search"
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-[#111116] text-zinc-300 transition-colors hover:text-white md:hidden cursor-pointer"
+              aria-expanded={mobileSearchOpen}
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#14141a] text-zinc-200 transition-colors hover:text-white active:bg-[#252530] md:hidden cursor-pointer"
             >
               <Search className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -116,7 +117,7 @@ export function TopBar({
           <button
             type="button"
             onClick={onJoinRoom}
-            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-[#111116] px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium text-white whitespace-nowrap shrink-0 transition-colors hover:border-white/30 hover:bg-[#181820] cursor-pointer"
+            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#14141a] px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium text-white whitespace-nowrap shrink-0 transition-colors hover:border-white/30 hover:bg-[#1b1b24] active:bg-[#252530] cursor-pointer"
           >
             <Users className="h-3.5 w-3.5 text-zinc-300 hidden sm:block" aria-hidden="true" />
             <span>Join Room</span>
@@ -125,7 +126,7 @@ export function TopBar({
           <button
             type="button"
             onClick={onCreateRoom}
-            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:bg-[#F40612] cursor-pointer"
+            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             <span>Create Room</span>
@@ -137,7 +138,7 @@ export function TopBar({
       {hasYouTubeApiKey && mobileSearchOpen && (
         <form
           onSubmit={handleSubmit}
-          className="flex items-center gap-2 border-t border-white/10 bg-[#0A0A0E] px-4 py-2.5 md:hidden"
+          className="flex items-center gap-2 border-t border-[#2a2a33] bg-[#0A0A0E] px-4 py-2.5 md:hidden"
         >
           <input
             type="search"
@@ -146,12 +147,12 @@ export function TopBar({
             placeholder="Search full movies on YouTube..."
             aria-label="Search full movies on YouTube"
             autoFocus
-            className="min-w-0 flex-1 min-h-[40px] rounded-lg border border-white/15 bg-[#111116] px-3 py-1.5 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none"
+            className="min-w-0 flex-1 min-h-[40px] rounded-lg border border-[#2a2a33] bg-[#14141a] px-3 py-1.5 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none"
           />
           <button
             type="submit"
             disabled={!input.trim() || searching}
-            className="min-h-[40px] rounded-lg bg-[#E50914] px-3.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap shrink-0 disabled:opacity-50 cursor-pointer"
+            className="min-h-[40px] rounded-lg bg-[#E50914] px-3.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap shrink-0 active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
           >
             {searching ? '...' : 'Go'}
           </button>

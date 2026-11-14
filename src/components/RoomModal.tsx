@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowRight, Check, Copy, X } from 'lucide-react';
+import { ArrowRight, Check, Copy, Play, Share2, Users, X } from 'lucide-react';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
+import { copyTextToClipboard, shareOrCopyLink } from '../lib/share';
 import {
   createRoomInSupabase,
   findRoomByCode,
@@ -24,9 +25,11 @@ export interface RoomVideoOption {
 interface RoomModalProps {
   mode: ModalMode;
   initialVideo: RoomVideoOption | null;
+  initialPositionSeconds?: number;
   sharedLibrary: SharedLibraryItem[];
   onClose: () => void;
   onOpenRoom: (room: RoomRecord) => void;
+  onWatchAlone: (videoId: string) => void;
   onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
 
@@ -49,20 +52,23 @@ function extractRoomCode(input: string): string {
 export function RoomModal({
   mode,
   initialVideo,
+  initialPositionSeconds = 0,
   sharedLibrary,
   onClose,
   onOpenRoom,
+  onWatchAlone,
   onSavedToLibrary,
 }: RoomModalProps) {
   const [roomName, setRoomName] = useState('Friday Movie Night');
   const [selectedVideoId, setSelectedVideoId] = useState(
-    initialVideo?.youtubeId ?? initialVideo?.id ?? LIBRARY_VIDEOS[0].id
+    initialVideo?.youtubeId ?? initialVideo?.id ?? LIBRARY_VIDEOS[0].youtubeId
   );
   const [joinCode, setJoinCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createdRoom, setCreatedRoom] = useState<RoomRecord | null>(null);
   const [copied, setCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Sync selected video whenever modal opens with a specific video or resets
   useEffect(() => {
@@ -71,7 +77,7 @@ export function RoomModal({
         setSelectedVideoId(initialVideo.youtubeId ?? initialVideo.id);
       } else {
         setSelectedVideoId(
-          sharedLibrary[0]?.video_id ?? LIBRARY_VIDEOS[0].id
+          sharedLibrary[0]?.video_id ?? LIBRARY_VIDEOS[0].youtubeId
         );
       }
     }
@@ -83,6 +89,7 @@ export function RoomModal({
       setErrorMsg('');
       setSubmitting(false);
       setCopied(false);
+      setShareCopied(false);
     }
   }, [mode]);
 
@@ -104,6 +111,7 @@ export function RoomModal({
     const { room, error } = await createRoomInSupabase({
       name: roomName,
       videoId: videoIdToSave,
+      positionSeconds: initialPositionSeconds,
     });
 
     setSubmitting(false);
@@ -159,12 +167,23 @@ export function RoomModal({
 
   const handleCopyInviteLink = async () => {
     if (!inviteLink) return;
-    try {
-      await navigator.clipboard.writeText(inviteLink);
+    const ok = await copyTextToClipboard(inviteLink);
+    if (ok) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API unavailable
+      window.setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleShareInviteLink = async () => {
+    if (!inviteLink || !createdRoom) return;
+    const result = await shareOrCopyLink({
+      title: `${createdRoom.name} — MovieNest`,
+      text: `Join my MovieNest watch party (${createdRoom.code})`,
+      url: inviteLink,
+    });
+    if (result === 'copied') {
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 2000);
     }
   };
 
@@ -204,7 +223,7 @@ export function RoomModal({
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -235,29 +254,49 @@ export function RoomModal({
               </div>
             </div>
 
-            <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-between">
-              <button
-                type="button"
-                onClick={handleCopyInviteLink}
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-white/15 bg-[#181820] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 cursor-pointer"
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
-                    <span>Copied Link</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4" aria-hidden="true" />
-                    <span>Copy Invite Link</span>
-                  </>
-                )}
-              </button>
+            <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:flex-wrap sm:justify-between">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyInviteLink}
+                  className="inline-flex min-h-[44px] flex-1 sm:flex-initial items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                      <span>Copied Link</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" aria-hidden="true" />
+                      <span>Copy Link</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleShareInviteLink}
+                  className="inline-flex min-h-[44px] flex-1 sm:flex-initial items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                >
+                  {shareCopied ? (
+                    <>
+                      <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                      <span>Link copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="h-4 w-4" aria-hidden="true" />
+                      <span>Share</span>
+                    </>
+                  )}
+                </button>
+              </div>
 
               <button
                 type="button"
                 onClick={() => onOpenRoom(createdRoom)}
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] cursor-pointer"
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
               >
                 <span>Open Room</span>
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -315,14 +354,14 @@ export function RoomModal({
                   )}
                   <optgroup label="Sample Videos (Free Open Movies)">
                     {LIBRARY_VIDEOS.map((video) => (
-                      <option key={video.id} value={video.id}>
+                      <option key={video.id} value={video.youtubeId}>
                         {video.title} ({video.duration})
                       </option>
                     ))}
                   </optgroup>
                   <optgroup label="Featured Picks">
                     {FEATURED_VIDEOS.map((video) => (
-                      <option key={video.id} value={video.id}>
+                      <option key={video.id} value={video.youtubeId}>
                         {video.title} ({video.duration})
                       </option>
                     ))}
@@ -336,21 +375,33 @@ export function RoomModal({
                 </p>
               )}
 
-              <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+              <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
-                  onClick={onClose}
-                  className="min-h-[44px] rounded-lg border border-white/15 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5 cursor-pointer"
+                  onClick={() => onWatchAlone(selectedVideoId)}
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
                 >
-                  Cancel
+                  <Play className="h-4 w-4 text-[#E50914] fill-current" aria-hidden="true" />
+                  <span>Watch Alone instead</span>
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] disabled:opacity-60 cursor-pointer"
-                >
-                  {submitting ? 'Creating Room...' : 'Create Room'}
-                </button>
+
+                <div className="flex flex-col-reverse gap-2.5 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="min-h-[44px] rounded-lg border border-[#2a2a33] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5 active:bg-white/10 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-60 cursor-pointer"
+                  >
+                    <Users className="h-4 w-4" aria-hidden="true" />
+                    <span>{submitting ? 'Creating Room...' : 'Watch Together'}</span>
+                  </button>
+                </div>
               </div>
             </form>
 
@@ -396,14 +447,14 @@ export function RoomModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="min-h-[44px] rounded-lg border border-white/15 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5 cursor-pointer"
+                className="min-h-[44px] rounded-lg border border-[#2a2a33] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5 active:bg-white/10 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] disabled:opacity-60 cursor-pointer"
+                className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-60 cursor-pointer"
               >
                 {submitting ? 'Looking up room...' : 'Join Room'}
               </button>

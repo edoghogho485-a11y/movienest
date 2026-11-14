@@ -49,7 +49,7 @@ export function Sidebar({ activeNav, onSelectNav }: SidebarProps) {
               type="button"
               onClick={() => onSelectNav(item.id)}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex w-full min-h-[44px] items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors cursor-pointer ${
+              className={`flex w-full min-h-[44px] items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors active:bg-[#20202b] cursor-pointer ${
                 isActive
                   ? 'bg-[#E50914]/15 text-white border border-[#E50914]/50'
                   : 'text-zinc-400 border border-transparent hover:bg-white/5 hover:text-white'
@@ -92,7 +92,7 @@ export function MobileBottomNav({ activeNav, onSelectNav }: SidebarProps) {
             type="button"
             onClick={() => onSelectNav(item.id)}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
+            className={`flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors active:bg-[#1a1a24] cursor-pointer ${
               isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >

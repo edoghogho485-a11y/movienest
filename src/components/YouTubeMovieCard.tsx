@@ -67,7 +67,7 @@ export function YouTubeMovieCard({
       <button
         type="button"
         onClick={() => onWatch(video)}
-        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] rounded-lg cursor-pointer"
+        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-80 rounded-lg cursor-pointer"
       >
         <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#1b1b24]">
           {!imgError ? (
@@ -102,7 +102,7 @@ export function YouTubeMovieCard({
         <button
           type="button"
           onClick={() => onCreateRoom(video)}
-          className="inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-2.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] cursor-pointer"
+          className="inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-2.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
         >
           <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>Create Room</span>
@@ -114,7 +114,7 @@ export function YouTubeMovieCard({
             setPickingCategory((prev) => !prev);
             setStatusMsg(null);
           }}
-          className="inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-[#181820] px-2.5 py-1.5 text-xs font-medium text-zinc-200 whitespace-nowrap transition-colors hover:border-white/30 cursor-pointer"
+          className="inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-[#181820] px-2.5 py-1.5 text-xs font-medium text-zinc-200 whitespace-nowrap transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
         >
           <BookmarkPlus className="h-3.5 w-3.5 text-[#E50914] shrink-0" aria-hidden="true" />
           <span>Save</span>
@@ -131,7 +131,7 @@ export function YouTubeMovieCard({
                 type="button"
                 disabled={saving}
                 onClick={() => void handleSaveCategory(category)}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors active:bg-[#b80710] cursor-pointer disabled:opacity-50 ${
                   category === defaultCategory
                     ? 'border border-[#E50914]/50 bg-[#1B1013] text-white hover:bg-[#E50914]'
                     : 'border border-white/15 bg-[#08080A] text-zinc-300 hover:border-white/30'

@@ -41,8 +41,10 @@ export function getInviteLink(code: string): string {
 export async function createRoomInSupabase(params: {
   name: string;
   videoId: string;
+  positionSeconds?: number;
 }): Promise<{ room: RoomRecord | null; error: string | null }> {
   const cleanName = params.name.trim() || 'Private Screening Room';
+  const startSeconds = Math.max(0, Math.floor(params.positionSeconds ?? 0));
 
   // Check Supabase before inserting so we generate a fresh code if already taken
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -69,7 +71,7 @@ export async function createRoomInSupabase(params: {
         name: cleanName,
         video_id: params.videoId,
         is_playing: false,
-        position_seconds: 0,
+        position_seconds: startSeconds,
       })
       .select()
       .single();

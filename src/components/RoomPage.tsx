@@ -8,11 +8,14 @@ import {
   Pause,
   Play,
   RefreshCw,
+  Share2,
   Users,
 } from 'lucide-react';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
+import { copyTextToClipboard, shareOrCopyLink } from '../lib/share';
 import {
+  findRoomByCode,
   getInviteLink,
   RoomRecord,
   SharedLibraryItem,
@@ -86,6 +89,8 @@ interface RoomPageProps {
 
 export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
   const [copied, setCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'synced' | 'reconnecting'>('connecting');
   const [peopleCount, setPeopleCount] = useState(1);
   const [roomState, setRoomState] = useState<{
@@ -384,12 +389,22 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
   }, [room.id]);
 
   const handleCopyInvite = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink);
+    const ok = await copyTextToClipboard(inviteLink);
+    if (ok) {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback if clipboard API is unavailable
+      window.setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleShareRoom = async () => {
+    const result = await shareOrCopyLink({
+      title: `${room.name} — MovieNest`,
+      text: `Join my MovieNest watch party (${room.code})`,
+      url: inviteLink,
+    });
+    if (result === 'copied') {
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 2000);
     }
   };
 
@@ -406,8 +421,21 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
     }
   };
 
-  const handleManualResync = () => {
-    applyRemoteStateToPlayer(roomState.isPlaying, roomState.positionSeconds);
+  // Re-fetch the latest room row from Supabase so Sync Player works even after network sleep
+  const handleManualResync = async () => {
+    setResyncing(true);
+    const { room: latest } = await findRoomByCode(room.code);
+    setResyncing(false);
+
+    if (latest) {
+      setRoomState({
+        isPlaying: latest.is_playing,
+        positionSeconds: latest.position_seconds,
+      });
+      applyRemoteStateToPlayer(latest.is_playing, latest.position_seconds);
+    } else {
+      applyRemoteStateToPlayer(roomState.isPlaying, roomState.positionSeconds);
+    }
   };
 
   return (
@@ -416,20 +444,20 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>Back to MovieNest</span>
         </button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <span className="font-mono text-sm font-semibold tracking-wider text-[#E50914]">
             {room.code}
           </span>
           <button
             type="button"
             onClick={handleCopyInvite}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-white/15 bg-[#111116] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:border-white/30 hover:bg-[#181820] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-[#2a2a33] bg-[#14141a] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
           >
             {copied ? (
               <>
@@ -440,6 +468,24 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
               <>
                 <Copy className="h-4 w-4" aria-hidden="true" />
                 <span>Copy Invite Link</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleShareRoom}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+          >
+            {shareCopied ? (
+              <>
+                <Check className="h-4 w-4" aria-hidden="true" />
+                <span>Link copied</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="h-4 w-4" aria-hidden="true" />
+                <span>Share</span>
               </>
             )}
           </button>
@@ -531,13 +577,13 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
 
           {/* Mobile-friendly synced playback controls bar */}
           {!embedBlocked && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#111116] px-4 py-3">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#2a2a33] bg-[#14141a] px-4 py-3">
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handleTogglePlayPause}
                   disabled={!playerReady}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] disabled:opacity-50 cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
                 >
                   {roomState.isPlaying ? (
                     <>
@@ -560,11 +606,11 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
               <button
                 type="button"
                 onClick={handleManualResync}
-                disabled={!playerReady}
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/15 bg-[#181820] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 disabled:opacity-50 cursor-pointer"
+                disabled={!playerReady || resyncing}
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] disabled:opacity-50 cursor-pointer"
               >
-                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Sync Player</span>
+                <RefreshCw className={`h-3.5 w-3.5 ${resyncing ? 'animate-spin' : ''}`} aria-hidden="true" />
+                <span>{resyncing ? 'Syncing...' : 'Sync Player'}</span>
               </button>
             </div>
           )}

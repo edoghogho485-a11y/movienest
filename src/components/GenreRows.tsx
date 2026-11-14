@@ -24,6 +24,7 @@ interface GenreRowsProps {
   onSavedToLibrary: (item: SharedLibraryItem) => void;
   onWatchLibraryItem: (item: SharedLibraryItem) => void;
   onWatchSampleVideo: (video: LibraryVideo) => void;
+  onWatchAloneSample: (video: LibraryVideo) => void;
   onCreateRoomSample: (video: LibraryVideo) => void;
 }
 
@@ -110,7 +111,7 @@ function LazyGenreRow({
           <button
             type="button"
             onClick={() => onSeeAll(genre, videos)}
-            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 text-xs font-semibold text-zinc-300 transition-colors hover:text-[#E50914] cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 text-xs font-semibold text-zinc-300 transition-colors hover:text-[#E50914] active:bg-[#20202a] cursor-pointer whitespace-nowrap shrink-0"
           >
             <span>See all</span>
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
@@ -163,7 +164,7 @@ function SharedLibraryCard({
     <button
       type="button"
       onClick={() => onWatch(item)}
-      className="group w-[220px] sm:w-[250px] shrink-0 snap-start text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] rounded-xl cursor-pointer"
+      className="group w-[220px] sm:w-[250px] shrink-0 snap-start text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-80 rounded-xl cursor-pointer"
     >
       <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[#2a2a33] bg-[#14141a] transition-colors group-hover:border-[#E50914]">
         {!imgError ? (
@@ -198,10 +199,12 @@ function SharedLibraryCard({
 function SampleVideoRowCard({
   video,
   onWatch,
+  onWatchAlone,
   onCreateRoom,
 }: {
   video: LibraryVideo;
   onWatch: (video: LibraryVideo) => void;
+  onWatchAlone: (video: LibraryVideo) => void;
   onCreateRoom: (video: LibraryVideo) => void;
 }) {
   const [imgError, setImgError] = useState(false);
@@ -211,7 +214,7 @@ function SampleVideoRowCard({
       <button
         type="button"
         onClick={() => onWatch(video)}
-        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] rounded-lg cursor-pointer"
+        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-80 rounded-lg cursor-pointer"
       >
         <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#1b1b24]">
           {!imgError ? (
@@ -250,18 +253,18 @@ function SampleVideoRowCard({
         <button
           type="button"
           onClick={() => onCreateRoom(video)}
-          className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] cursor-pointer"
+          className="inline-flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
         >
           <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>Watch Together</span>
         </button>
         <button
           type="button"
-          onClick={() => onWatch(video)}
-          className="inline-flex min-h-[40px] items-center justify-center gap-1 rounded-lg border border-white/15 bg-[#181820] px-3 py-1.5 text-xs font-medium text-zinc-200 whitespace-nowrap transition-colors hover:border-white/30 cursor-pointer"
+          onClick={() => onWatchAlone(video)}
+          className="inline-flex min-h-[40px] items-center justify-center gap-1 rounded-lg border border-white/15 bg-[#181820] px-3 py-1.5 text-xs font-medium text-zinc-200 whitespace-nowrap transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
         >
           <Play className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>Play</span>
+          <span>Watch Alone</span>
         </button>
       </div>
     </article>
@@ -279,6 +282,7 @@ export function GenreRows({
   onSavedToLibrary,
   onWatchLibraryItem,
   onWatchSampleVideo,
+  onWatchAloneSample,
   onCreateRoomSample,
 }: GenreRowsProps) {
   // Only render Shared Library rows for categories that actually contain saved videos
@@ -335,6 +339,7 @@ export function GenreRows({
               key={video.id}
               video={video}
               onWatch={onWatchSampleVideo}
+              onWatchAlone={onWatchAloneSample}
               onCreateRoom={onCreateRoomSample}
             />
           ))}

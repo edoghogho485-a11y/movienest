@@ -184,7 +184,7 @@ export function RoomChat({ roomCode }: RoomChatProps) {
             <button
               type="submit"
               disabled={!nameInput.trim()}
-              className="w-full min-h-[44px] rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] disabled:opacity-50 cursor-pointer"
+              className="w-full min-h-[44px] rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
             >
               Join Chat
             </button>
@@ -249,7 +249,7 @@ export function RoomChat({ roomCode }: RoomChatProps) {
                 type="submit"
                 disabled={!messageText.trim() || sending}
                 aria-label="Send message"
-                className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] disabled:opacity-50 shrink-0 cursor-pointer"
+                className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 shrink-0 cursor-pointer"
               >
                 <Send className="h-4 w-4" aria-hidden="true" />
                 <span>Send</span>

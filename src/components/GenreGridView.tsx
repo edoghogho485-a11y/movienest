@@ -28,7 +28,7 @@ export function GenreGridView({
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] cursor-pointer"
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] active:bg-white/10 cursor-pointer"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span>Back to browse</span>

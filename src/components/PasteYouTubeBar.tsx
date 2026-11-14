@@ -175,7 +175,7 @@ export function PasteYouTubeBar({
             type="button"
             onClick={() => setUrlInput('')}
             aria-label="Clear YouTube link"
-            className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-zinc-400 hover:text-white cursor-pointer"
+            className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-zinc-400 hover:text-white active:bg-white/10 cursor-pointer"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -225,7 +225,7 @@ export function PasteYouTubeBar({
                       thumbnail: thumbnailUrl,
                     })
                   }
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
                 >
                   <Users className="h-4 w-4" aria-hidden="true" />
                   <span>Create Room with this</span>
@@ -237,7 +237,7 @@ export function PasteYouTubeBar({
                     setShowCategoryPicker((prev) => !prev);
                     setSaveMessage(null);
                   }}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-white/15 bg-[#111116] px-4 py-2 text-sm font-medium text-white whitespace-nowrap transition-colors hover:border-white/30 cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-white/15 bg-[#111116] px-4 py-2 text-sm font-medium text-white whitespace-nowrap transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
                 >
                   <BookmarkPlus className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
                   <span>Save to Library</span>
@@ -261,7 +261,7 @@ export function PasteYouTubeBar({
                       setSelectedCategory(category);
                       void handleSaveToLibrary(category);
                     }}
-                    className={`min-h-[40px] rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                    className={`min-h-[40px] rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors active:bg-[#b80710] cursor-pointer disabled:opacity-50 ${
                       selectedCategory === category && saving
                         ? 'bg-[#E50914] text-white font-semibold'
                         : 'border border-white/15 bg-[#08080A] text-zinc-200 hover:border-[#E50914]/60 hover:text-white'
