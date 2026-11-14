@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookmarkPlus, Check, Film, Users } from 'lucide-react';
+import { BookmarkPlus, Check, Film, Share2, Users } from 'lucide-react';
 import {
   saveToSharedLibrary,
   SHARED_LIBRARY_CATEGORIES,
@@ -14,6 +14,7 @@ interface YouTubeMovieCardProps {
   className?: string;
   onWatch: (video: YouTubeSearchResult) => void;
   onCreateRoom: (video: YouTubeSearchResult) => void;
+  onShare: (video: YouTubeSearchResult) => void;
   onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
 
@@ -23,6 +24,7 @@ export function YouTubeMovieCard({
   className = '',
   onWatch,
   onCreateRoom,
+  onShare,
   onSavedToLibrary,
 }: YouTubeMovieCardProps) {
   const [imgError, setImgError] = useState(false);
@@ -98,7 +100,7 @@ export function YouTubeMovieCard({
         <p className="mt-1 text-xs text-zinc-400 truncate">{video.channelTitle}</p>
       </button>
 
-      <div className="mt-auto pt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-auto pt-3 flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => onCreateRoom(video)}
@@ -114,10 +116,19 @@ export function YouTubeMovieCard({
             setPickingCategory((prev) => !prev);
             setStatusMsg(null);
           }}
-          className="inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-[#181820] px-2.5 py-1.5 text-xs font-medium text-zinc-200 whitespace-nowrap transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+          className="inline-flex min-h-[38px] items-center justify-center gap-1 rounded-lg border border-white/15 bg-[#181820] px-2.5 py-1.5 text-xs font-medium text-zinc-200 whitespace-nowrap transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
         >
           <BookmarkPlus className="h-3.5 w-3.5 text-[#E50914] shrink-0" aria-hidden="true" />
           <span>Save</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onShare(video)}
+          aria-label={`Share ${video.title}`}
+          className="inline-flex min-h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border border-white/15 bg-[#181820] text-zinc-200 transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+        >
+          <Share2 className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
         </button>
       </div>
 

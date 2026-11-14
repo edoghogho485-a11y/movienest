@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { ArrowRight, Check, Copy, Play, Share2, Users, X } from 'lucide-react';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
-import { copyTextToClipboard, shareOrCopyLink } from '../lib/share';
+import { copyTextToClipboard, ShareTarget } from '../lib/share';
 import {
   createRoomInSupabase,
   findRoomByCode,
@@ -30,6 +30,7 @@ interface RoomModalProps {
   onClose: () => void;
   onOpenRoom: (room: RoomRecord) => void;
   onWatchAlone: (videoId: string) => void;
+  onShareRoom: (target: ShareTarget) => void;
   onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
 
@@ -57,6 +58,7 @@ export function RoomModal({
   onClose,
   onOpenRoom,
   onWatchAlone,
+  onShareRoom,
   onSavedToLibrary,
 }: RoomModalProps) {
   const [roomName, setRoomName] = useState('Friday Movie Night');
@@ -67,8 +69,8 @@ export function RoomModal({
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [createdRoom, setCreatedRoom] = useState<RoomRecord | null>(null);
+  const [createdVideoTitle, setCreatedVideoTitle] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
 
   // Sync selected video whenever modal opens with a specific video or resets
   useEffect(() => {
@@ -86,10 +88,10 @@ export function RoomModal({
   useEffect(() => {
     if (!mode) {
       setCreatedRoom(null);
+      setCreatedVideoTitle(null);
       setErrorMsg('');
       setSubmitting(false);
       setCopied(false);
-      setShareCopied(false);
     }
   }, [mode]);
 
@@ -104,7 +106,27 @@ export function RoomModal({
 
   if (!mode) return null;
 
-  const createRoomForVideoId = async (videoIdToSave: string) => {
+  const resolveVideoTitle = (videoIdToLookup: string): string => {
+    if (
+      initialVideo &&
+      (initialVideo.youtubeId === videoIdToLookup || initialVideo.id === videoIdToLookup)
+    ) {
+      return initialVideo.title;
+    }
+    const fromShared = sharedLibrary.find((i) => i.video_id === videoIdToLookup);
+    if (fromShared) return fromShared.title;
+    const fromLib = LIBRARY_VIDEOS.find(
+      (v) => v.youtubeId === videoIdToLookup || v.id === videoIdToLookup
+    );
+    if (fromLib) return fromLib.title;
+    const fromFeat = FEATURED_VIDEOS.find(
+      (v) => v.youtubeId === videoIdToLookup || v.id === videoIdToLookup
+    );
+    if (fromFeat) return fromFeat.title;
+    return roomName.trim() || 'Movie Night';
+  };
+
+  const createRoomForVideoId = async (videoIdToSave: string, explicitTitle?: string) => {
     setErrorMsg('');
     setSubmitting(true);
 
@@ -121,6 +143,7 @@ export function RoomModal({
       return;
     }
 
+    setCreatedVideoTitle(explicitTitle ?? resolveVideoTitle(videoIdToSave));
     setCreatedRoom(room);
   };
 
@@ -132,7 +155,7 @@ export function RoomModal({
   // Triggered when user clicks "Create Room with this" inside the modal's Paste-a-Link bar
   const handleCreateWithPastedYouTube = async (pasted: PastedYouTubeVideo) => {
     setSelectedVideoId(pasted.videoId);
-    await createRoomForVideoId(pasted.videoId);
+    await createRoomForVideoId(pasted.videoId, pasted.title);
   };
 
   const handleJoinSubmit = async (e: FormEvent) => {
@@ -174,17 +197,14 @@ export function RoomModal({
     }
   };
 
-  const handleShareInviteLink = async () => {
+  const handleShareInviteLink = () => {
     if (!inviteLink || !createdRoom) return;
-    const result = await shareOrCopyLink({
-      title: `${createdRoom.name} — MovieNest`,
-      text: `Join my MovieNest watch party (${createdRoom.code})`,
+    onShareRoom({
+      kind: 'room',
+      title: createdVideoTitle ?? createdRoom.name,
+      roomCode: createdRoom.code,
       url: inviteLink,
     });
-    if (result === 'copied') {
-      setShareCopied(true);
-      window.setTimeout(() => setShareCopied(false), 2000);
-    }
   };
 
   // Check if selectedVideoId is already represented in one of the dropdown lists
@@ -279,17 +299,8 @@ export function RoomModal({
                   onClick={handleShareInviteLink}
                   className="inline-flex min-h-[44px] flex-1 sm:flex-initial items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
                 >
-                  {shareCopied ? (
-                    <>
-                      <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
-                      <span>Link copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Share2 className="h-4 w-4" aria-hidden="true" />
-                      <span>Share</span>
-                    </>
-                  )}
+                  <Share2 className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
+                  <span>Share</span>
                 </button>
               </div>
 

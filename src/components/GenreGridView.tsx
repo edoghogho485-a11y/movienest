@@ -10,6 +10,7 @@ interface GenreGridViewProps {
   onBack: () => void;
   onWatch: (video: YouTubeSearchResult) => void;
   onCreateRoom: (video: YouTubeSearchResult) => void;
+  onShare: (video: YouTubeSearchResult) => void;
   onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
 
@@ -19,6 +20,7 @@ export function GenreGridView({
   onBack,
   onWatch,
   onCreateRoom,
+  onShare,
   onSavedToLibrary,
 }: GenreGridViewProps) {
   return (
@@ -51,6 +53,7 @@ export function GenreGridView({
             defaultCategory={genre.defaultCategory}
             onWatch={onWatch}
             onCreateRoom={onCreateRoom}
+            onShare={onShare}
             onSavedToLibrary={onSavedToLibrary}
           />
         ))}

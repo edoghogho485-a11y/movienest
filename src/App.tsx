@@ -11,10 +11,16 @@ import { VideoPlayerPage, WatchableVideo } from './components/VideoPlayerPage';
 import { RoomPage } from './components/RoomPage';
 import { ModalMode, RoomModal, RoomVideoOption } from './components/RoomModal';
 import { WatchChoiceModal } from './components/WatchChoiceModal';
+import { ShareSheet } from './components/ShareSheet';
 import { YouTubeMovieCard } from './components/YouTubeMovieCard';
 import { GenreDefinition } from './data/genres';
 import { LIBRARY_VIDEOS, LibraryVideo } from './data/libraryVideos';
 import { FEATURED_VIDEOS } from './data/videos';
+import {
+  getSiteShareLink,
+  getWatchAloneLink,
+  ShareTarget,
+} from './lib/share';
 import {
   fetchSharedLibrary,
   findRoomByCode,
@@ -133,6 +139,7 @@ export default function App() {
 
   // Watch Together vs Watch Alone chooser sheet
   const [choiceVideo, setChoiceVideo] = useState<RoomVideoOption | null>(null);
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
 
   const [watchingVideo, setWatchingVideo] = useState<WatchableVideo | null>(() => {
     const watchId = getWatchIdFromUrl();
@@ -380,10 +387,27 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const openShareForVideo = (videoId: string, title: string) => {
+    setShareTarget({
+      kind: 'video',
+      videoId,
+      title,
+      url: getWatchAloneLink(videoId),
+    });
+  };
+
+  const openShareForSite = () => {
+    setShareTarget({
+      kind: 'site',
+      url: getSiteShareLink(),
+    });
+  };
+
   const clearRoomAndSubpages = () => {
     setActiveRoom(null);
     setWatchingVideo(null);
     setChoiceVideo(null);
+    setShareTarget(null);
     setSeeAllData(null);
     setRoomNotFoundCode(null);
     setRoomLoading(false);
@@ -556,12 +580,14 @@ export default function App() {
               room={activeRoom}
               sharedLibrary={sharedLibrary}
               onBack={handleGoHome}
+              onShare={setShareTarget}
             />
           ) : watchingVideo ? (
             <VideoPlayerPage
               video={watchingVideo}
               relatedVideos={LIBRARY_VIDEOS.filter((v) => v.youtubeId !== watchingVideo.youtubeId)}
               onBack={handleGoHome}
+              onShare={setShareTarget}
               onInviteFriends={(video, currentSeconds) =>
                 openCreateRoom(
                   {
@@ -592,6 +618,7 @@ export default function App() {
               onBack={() => setSeeAllData(null)}
               onWatch={openChoiceForSearch}
               onCreateRoom={openCreateRoomFromSearch}
+              onShare={(video) => openShareForVideo(video.videoId, video.title)}
               onSavedToLibrary={handleSavedToLibrary}
             />
           ) : null}
@@ -667,6 +694,7 @@ export default function App() {
                           video={video}
                           onWatch={openChoiceForSearch}
                           onCreateRoom={openCreateRoomFromSearch}
+                          onShare={(v) => openShareForVideo(v.videoId, v.title)}
                           onSavedToLibrary={handleSavedToLibrary}
                         />
                       ))}
@@ -790,6 +818,10 @@ export default function App() {
                       <HeroBanner
                         onlineCount={onlineCount}
                         onWatchClick={(video) => setChoiceVideo(video)}
+                        onShareVideoClick={(video) =>
+                          openShareForVideo(video.youtubeId ?? video.id, video.title)
+                        }
+                        onInviteFriendsSite={openShareForSite}
                       />
                       <PasteYouTubeBar
                         variant="home"
@@ -872,8 +904,10 @@ export default function App() {
                     }}
                     onWatchYouTube={openChoiceForSearch}
                     onCreateRoomYouTube={openCreateRoomFromSearch}
+                    onShareYouTube={(video) => openShareForVideo(video.videoId, video.title)}
                     onSavedToLibrary={handleSavedToLibrary}
                     onWatchLibraryItem={openChoiceForSharedLibrary}
+                    onShareLibraryItem={(item) => openShareForVideo(item.video_id, item.title)}
                     onWatchSampleVideo={openChoiceForSample}
                     onWatchAloneSample={(sample) =>
                       enterWatchAlone({
@@ -886,6 +920,7 @@ export default function App() {
                       })
                     }
                     onCreateRoomSample={openCreateRoomFromSample}
+                    onShareSample={(sample) => openShareForVideo(sample.youtubeId, sample.title)}
                   />
                 </>
               )}
@@ -932,8 +967,11 @@ export default function App() {
           const resolved = resolveWatchableById(videoId, sharedLibrary);
           enterWatchAlone(resolved);
         }}
+        onShareRoom={setShareTarget}
         onSavedToLibrary={handleSavedToLibrary}
       />
+
+      <ShareSheet target={shareTarget} onClose={() => setShareTarget(null)} />
     </div>
   );
 }

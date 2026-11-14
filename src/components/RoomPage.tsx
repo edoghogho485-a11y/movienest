@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { FEATURED_VIDEOS } from '../data/videos';
 import { LIBRARY_VIDEOS } from '../data/libraryVideos';
-import { copyTextToClipboard, shareOrCopyLink } from '../lib/share';
+import { copyTextToClipboard, ShareTarget } from '../lib/share';
 import {
   findRoomByCode,
   getInviteLink,
@@ -85,11 +85,11 @@ interface RoomPageProps {
   room: RoomRecord;
   sharedLibrary: SharedLibraryItem[];
   onBack: () => void;
+  onShare: (target: ShareTarget) => void;
 }
 
-export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
+export function RoomPage({ room, sharedLibrary, onBack, onShare }: RoomPageProps) {
   const [copied, setCopied] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
   const [resyncing, setResyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'synced' | 'reconnecting'>('connecting');
   const [peopleCount, setPeopleCount] = useState(1);
@@ -396,16 +396,13 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
     }
   };
 
-  const handleShareRoom = async () => {
-    const result = await shareOrCopyLink({
-      title: `${room.name} — MovieNest`,
-      text: `Join my MovieNest watch party (${room.code})`,
+  const handleShareRoom = () => {
+    onShare({
+      kind: 'room',
+      title: displayVideoTitle,
+      roomCode: room.code,
       url: inviteLink,
     });
-    if (result === 'copied') {
-      setShareCopied(true);
-      window.setTimeout(() => setShareCopied(false), 2000);
-    }
   };
 
   // Manual touch-friendly play/pause control (triggers onStateChange -> pushLocalState)
@@ -477,17 +474,8 @@ export function RoomPage({ room, sharedLibrary, onBack }: RoomPageProps) {
             onClick={handleShareRoom}
             className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
           >
-            {shareCopied ? (
-              <>
-                <Check className="h-4 w-4" aria-hidden="true" />
-                <span>Link copied</span>
-              </>
-            ) : (
-              <>
-                <Share2 className="h-4 w-4" aria-hidden="true" />
-                <span>Share</span>
-              </>
-            )}
+            <Share2 className="h-4 w-4" aria-hidden="true" />
+            <span>Share</span>
           </button>
         </div>
       </div>

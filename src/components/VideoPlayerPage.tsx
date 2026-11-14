@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  Check,
   ExternalLink,
   Film,
   Lock,
@@ -9,7 +8,7 @@ import {
   Users,
 } from 'lucide-react';
 import { LibraryVideo } from '../data/libraryVideos';
-import { getWatchAloneLink, shareOrCopyLink } from '../lib/share';
+import { getWatchAloneLink, ShareTarget } from '../lib/share';
 import {
   fetchYouTubeTitle,
   loadYouTubeIframeAPI,
@@ -29,6 +28,7 @@ interface VideoPlayerPageProps {
   video: WatchableVideo;
   relatedVideos: LibraryVideo[];
   onBack: () => void;
+  onShare: (target: ShareTarget) => void;
   onInviteFriends: (video: WatchableVideo, currentSeconds: number) => void;
   onSelectSampleVideo: (video: LibraryVideo) => void;
 }
@@ -86,12 +86,12 @@ export function VideoPlayerPage({
   video,
   relatedVideos,
   onBack,
+  onShare,
   onInviteFriends,
   onSelectSampleVideo,
 }: VideoPlayerPageProps) {
   const [embedBlocked, setEmbedBlocked] = useState(false);
   const [resolvedTitle, setResolvedTitle] = useState<string | null>(null);
-  const [shareCopied, setShareCopied] = useState(false);
   const playerMountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
 
@@ -164,17 +164,13 @@ export function VideoPlayerPage({
 
   const displayTitle = resolvedTitle ?? video.title;
 
-  const handleShareVideo = async () => {
-    const shareUrl = getWatchAloneLink(video.youtubeId);
-    const result = await shareOrCopyLink({
+  const handleShareVideo = () => {
+    onShare({
+      kind: 'video',
       title: displayTitle,
-      text: `Watch "${displayTitle}" on MovieNest`,
-      url: shareUrl,
+      videoId: video.youtubeId,
+      url: getWatchAloneLink(video.youtubeId),
     });
-    if (result === 'copied') {
-      setShareCopied(true);
-      window.setTimeout(() => setShareCopied(false), 2000);
-    }
   };
 
   const handleInviteFriends = () => {
@@ -262,17 +258,8 @@ export function VideoPlayerPage({
             onClick={handleShareVideo}
             className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#14141a] px-4 py-2.5 text-sm font-medium text-white whitespace-nowrap transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
           >
-            {shareCopied ? (
-              <>
-                <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
-                <span>Link copied</span>
-              </>
-            ) : (
-              <>
-                <Share2 className="h-4 w-4" aria-hidden="true" />
-                <span>Share</span>
-              </>
-            )}
+            <Share2 className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
+            <span>Share</span>
           </button>
 
           <button
