@@ -78,14 +78,14 @@ export function CategoryTiles({ onSelectGenre }: CategoryTilesProps) {
       <div className="flex items-baseline justify-between gap-4">
         <h2
           id="browse-by-category-heading"
-          className="font-display text-lg font-semibold tracking-tight text-white sm:text-xl"
+          className="text-lg font-bold tracking-tight text-[#f4ece1] sm:text-xl"
         >
           Browse by Category
         </h2>
-        <span className="text-xs text-zinc-400">Jump to a genre</span>
+        <span className="text-xs text-[#b9aa98]">Jump to a genre</span>
       </div>
 
-      {/* Simple CSS grid: 2 columns on phones, 4 to 6 columns on laptops; no blur/glow/transform layers */}
+      {/* Flat solid cards: 2 columns on phones, 4 to 6 columns on laptops */}
       <div className="mt-3.5 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
         {allCategories.map((category) => {
           const Icon = category.icon;
@@ -94,12 +94,12 @@ export function CategoryTiles({ onSelectGenre }: CategoryTilesProps) {
               key={category.slug}
               type="button"
               onClick={() => onSelectGenre({ slug: category.slug, name: category.name })}
-              className="flex h-16 w-full items-center gap-3 rounded-xl border border-[#2a2a33] bg-[#14141a] px-3 text-left transition-colors hover:border-[#E50914] hover:bg-[#1b1b24] active:bg-[#1f1f29] cursor-pointer"
+              className="flex h-16 min-h-[44px] w-full items-center gap-3 rounded-2xl border border-[#3a322a] bg-[#1e1a16] px-3 text-left transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#20202a] text-[#E50914]">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#14110f] text-[#f2a33a]">
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </span>
-              <span className="min-w-0 flex-1 text-xs sm:text-sm font-medium text-white line-clamp-2 leading-tight">
+              <span className="min-w-0 flex-1 text-xs sm:text-sm font-medium text-[#f4ece1] line-clamp-2 leading-tight">
                 {category.name}
               </span>
             </button>

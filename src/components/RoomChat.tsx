@@ -93,26 +93,26 @@ export function RoomChat({
   return (
     <aside
       aria-label="Room chat"
-      className={`flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111116] ${
+      className={`flex flex-col overflow-hidden rounded-[20px] border border-[#3a322a] bg-[#1e1a16] ${
         inMobileTab ? 'h-[380px]' : 'h-[380px] lg:h-[460px]'
       }`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-        <h2 className="font-display text-sm font-semibold text-white">
+      <div className="flex items-center justify-between gap-3 border-b border-[#3a322a] px-4 py-3">
+        <h2 className="text-sm font-bold text-[#f4ece1]">
           Room Chat
         </h2>
         {safeUsername && (
-          <span className="truncate text-xs text-zinc-400">
-            Chatting as <span className="font-medium text-[#E50914]">@{safeUsername}</span>
+          <span className="truncate text-xs text-[#b9aa98]">
+            Chatting as <span className="font-bold text-[#f2a33a]">@{safeUsername}</span>
           </span>
         )}
       </div>
 
       <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3.5">
         {loading ? (
-          <p className="text-xs text-zinc-400">Loading messages...</p>
+          <p className="text-xs text-[#b9aa98]">Loading messages...</p>
         ) : safeMessages.length === 0 ? (
-          <p className="text-xs leading-relaxed text-zinc-400">
+          <p className="text-xs leading-relaxed text-[#b9aa98]">
             No messages yet. Say hello to everyone in the room.
           </p>
         ) : (
@@ -122,17 +122,17 @@ export function RoomChat({
               <div key={msg.id} className="space-y-0.5">
                 <div className="flex items-baseline justify-between gap-2">
                   <span
-                    className={`text-xs font-semibold ${
-                      isSelf ? 'text-[#E50914]' : 'text-zinc-200'
+                    className={`text-xs font-bold ${
+                      isSelf ? 'text-[#f2a33a]' : 'text-[#f4ece1]'
                     }`}
                   >
                     {msg.sender_name}
                   </span>
-                  <span className="font-mono text-[11px] text-zinc-500 tabular-nums shrink-0">
+                  <span className="font-mono text-[11px] text-[#b9aa98] tabular-nums shrink-0">
                     {formatMessageTime(msg.created_at)}
                   </span>
                 </div>
-                <p className="break-words text-sm leading-snug text-zinc-300">
+                <p className="break-words text-sm leading-snug text-[#f4ece1]/90">
                   {msg.body}
                 </p>
               </div>
@@ -141,12 +141,12 @@ export function RoomChat({
         )}
       </div>
 
-      <div className="border-t border-white/10 bg-[#181820] p-3">
+      <div className="border-t border-[#3a322a] bg-[#14110f] p-3">
         {!safeUsername ? (
           <button
             type="button"
             onClick={onRequestUsername}
-            className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+            className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-full bg-[#f2a33a] px-4 py-2 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
           >
             <AtSign className="h-4 w-4" aria-hidden="true" />
             <span>Choose your username to chat</span>
@@ -154,7 +154,7 @@ export function RoomChat({
         ) : (
           <>
             {displayedError && (
-              <p className="mb-2 text-xs text-[#F87171]" role="alert">
+              <p className="mb-2 text-xs font-medium text-[#f2a33a]" role="alert">
                 {displayedError}
               </p>
             )}
@@ -167,13 +167,13 @@ export function RoomChat({
                 maxLength={CHAT_MESSAGE_MAX_LENGTH}
                 placeholder="Write a message..."
                 aria-label="Chat message"
-                className="min-w-0 flex-1 min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
+                className="min-w-0 flex-1 min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
               />
               <button
                 type="submit"
                 disabled={!messageText.trim() || sending}
                 aria-label="Send message"
-                className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 shrink-0 cursor-pointer"
+                className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-4 py-2 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 shrink-0 cursor-pointer"
               >
                 <Send className="h-4 w-4" aria-hidden="true" />
                 <span>Send</span>
@@ -181,7 +181,7 @@ export function RoomChat({
             </form>
 
             {messageText.length >= 240 && (
-              <p className="mt-1.5 text-right font-mono text-[11px] text-zinc-400 tabular-nums">
+              <p className="mt-1.5 text-right font-mono text-[11px] text-[#b9aa98] tabular-nums">
                 {messageText.length}/{CHAT_MESSAGE_MAX_LENGTH}
               </p>
             )}

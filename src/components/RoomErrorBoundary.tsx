@@ -61,24 +61,24 @@ export class RoomErrorBoundary extends Component<
           role="alert"
           className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6"
         >
-          <div className="rounded-2xl border border-[#2a2a33] bg-[#14141a] p-6 sm:p-8">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-[#E50914]/40 bg-[#1b1013]">
-              <AlertTriangle className="h-6 w-6 text-[#E50914]" aria-hidden="true" />
+          <div className="rounded-[20px] border border-[#3a322a] bg-[#1e1a16] p-6 sm:p-8">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-[#f2a33a]/40 bg-[#14110f]">
+              <AlertTriangle className="h-6 w-6 text-[#f2a33a]" aria-hidden="true" />
             </div>
 
-            <h1 className="mt-4 font-display text-2xl font-bold text-white">
+            <h1 className="mt-4 text-2xl font-bold text-[#f4ece1]">
               Could not display this room
             </h1>
-            <p className="mt-2 text-sm text-zinc-400">
+            <p className="mt-2 text-sm text-[#b9aa98]">
               Something went wrong while opening the screening room.
             </p>
 
             {this.state.errorMessage && (
-              <div className="mt-4 rounded-xl border border-[#2a2a33] bg-[#08080A] px-4 py-3 text-left">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              <div className="mt-4 rounded-2xl border border-[#3a322a] bg-[#14110f] px-4 py-3 text-left">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#b9aa98]">
                   Error details
                 </p>
-                <p className="mt-1 break-words font-mono text-xs text-[#F87171]">
+                <p className="mt-1 break-words font-mono text-xs text-[#f2a33a]">
                   {this.state.errorMessage}
                 </p>
               </div>
@@ -88,7 +88,7 @@ export class RoomErrorBoundary extends Component<
               <button
                 type="button"
                 onClick={this.handleBackToHome}
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
               >
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                 <span>Back to home</span>

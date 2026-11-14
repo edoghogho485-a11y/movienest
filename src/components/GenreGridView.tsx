@@ -45,34 +45,34 @@ export function GenreGridView({
 
   return (
     <section className="px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#3a322a] pb-4">
         <div>
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] active:bg-white/10 cursor-pointer"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <ArrowLeft className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
             <span>Back to browse</span>
           </button>
-          <div className="mt-1 flex items-center gap-2.5">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          <div className="mt-3 flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-[#f4ece1] sm:text-3xl">
               {data.genre.name}
             </h1>
             {data.kind === 'archive' && (
-              <span className="rounded-md border border-[#2a2a33] bg-[#14141a] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-200">
-                Archive
+              <span className="text-xs font-medium text-[#b9aa98]">
+                · Archive
               </span>
             )}
           </div>
         </div>
 
-        <span className="text-xs font-medium text-zinc-400 tabular-nums">
+        <span className="text-xs font-medium text-[#b9aa98] tabular-nums">
           {count} {count === 1 ? 'movie' : 'movies'}
         </span>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {data.kind === 'youtube'
           ? data.videos.map((video) => (
               <YouTubeMovieCard

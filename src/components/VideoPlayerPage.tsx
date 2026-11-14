@@ -61,9 +61,9 @@ function RelatedVideoCard({
     <button
       type="button"
       onClick={() => onSelect(item)}
-      className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-80 rounded-xl cursor-pointer"
+      className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] active:opacity-80 rounded-2xl cursor-pointer"
     >
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[#2a2a33] bg-[#14141a] transition-colors group-hover:border-[#E50914]">
+      <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-[#3a322a] bg-[#1e1a16] transition-colors group-hover:border-[#f2a33a]">
         {!imgError ? (
           <img
             src={item.thumbnail}
@@ -73,25 +73,21 @@ function RelatedVideoCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#14141a] p-3">
-            <Film className="h-6 w-6 text-[#E50914]/85" aria-hidden="true" />
-            <span className="text-xs font-medium text-zinc-200 text-center line-clamp-1">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#1e1a16] p-3">
+            <Film className="h-6 w-6 text-[#f2a33a]" aria-hidden="true" />
+            <span className="text-xs font-medium text-[#f4ece1] text-center line-clamp-1">
               {item.title}
             </span>
           </div>
         )}
-        <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"
-          aria-hidden="true"
-        />
-        <span className="absolute right-2.5 bottom-2 font-mono text-xs font-medium text-white tabular-nums">
+        <span className="absolute right-2.5 bottom-2 rounded-md bg-[#14110f]/90 px-2 py-0.5 font-mono text-xs font-medium text-[#f4ece1] tabular-nums">
           {item.duration}
         </span>
       </div>
-      <p className="mt-2 font-display text-sm font-semibold text-white line-clamp-1 group-hover:text-[#E50914]">
+      <p className="mt-2 text-sm font-bold text-[#f4ece1] line-clamp-1 group-hover:text-[#f2a33a]">
         {item.title}
       </p>
-      <p className="mt-0.5 text-xs text-zinc-400">{item.category}</p>
+      <p className="mt-0.5 text-xs text-[#b9aa98]">{item.category}</p>
     </button>
   );
 }
@@ -424,38 +420,38 @@ export function VideoPlayerPage({
           saveHistoryProgress(false);
           onBack();
         }}
-        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] hover:text-[#f2a33a] active:bg-[#2a241e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] cursor-pointer"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         <span>Back to MovieNest</span>
       </button>
 
-      <div className="mt-4 overflow-hidden rounded-2xl border border-[#2a2a33] bg-[#14141a]">
+      <div className="mt-4 overflow-hidden rounded-[20px] border border-[#3a322a] bg-[#1e1a16]">
         {isArchive ? (
           archiveLoading ? (
-            <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-black p-6 text-center">
-              <Film className="h-8 w-8 text-[#E50914] animate-pulse" aria-hidden="true" />
-              <p className="text-sm font-medium text-zinc-200">
+            <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-[#14110f] p-6 text-center">
+              <Film className="h-8 w-8 text-[#f2a33a] animate-pulse" aria-hidden="true" />
+              <p className="text-sm font-medium text-[#f4ece1]">
                 Loading movie from Internet Archive...
               </p>
             </div>
           ) : archiveError || !archiveUrl ? (
-            <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#2a2a33] bg-[#1b1b24]">
-                <Film className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
+            <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 bg-[#14110f] p-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#3a322a] bg-[#1e1a16]">
+                <Film className="h-5 w-5 text-[#f2a33a]" aria-hidden="true" />
               </div>
               <div className="max-w-md space-y-1.5">
-                <p className="font-display text-lg font-semibold text-white">
+                <p className="text-lg font-bold text-[#f4ece1]">
                   This Archive movie couldn&apos;t load
                 </p>
-                <p className="text-sm text-zinc-400">
+                <p className="text-sm text-[#b9aa98]">
                   The MP4 stream may be unavailable or temporarily slow on Internet Archive.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onBack}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
               >
                 <span>Try another movie</span>
               </button>
@@ -480,19 +476,19 @@ export function VideoPlayerPage({
               }}
               onEnded={() => saveHistoryProgress(true)}
               onError={() => setArchiveError(true)}
-              className="aspect-video w-full bg-black"
+              className="aspect-video w-full bg-[#14110f]"
             />
           )
         ) : embedBlocked ? (
-          <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#2a2a33] bg-[#1b1b24]">
-              <Lock className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
+          <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 bg-[#14110f] p-6 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#3a322a] bg-[#1e1a16]">
+              <Lock className="h-5 w-5 text-[#f2a33a]" aria-hidden="true" />
             </div>
             <div className="max-w-md space-y-1.5">
-              <p className="font-display text-lg font-semibold text-white">
+              <p className="text-lg font-bold text-[#f4ece1]">
                 This video&apos;s owner blocks embedding
               </p>
-              <p className="text-sm text-zinc-400">
+              <p className="text-sm text-[#b9aa98]">
                 YouTube restricts playback of this video on external websites, so you can watch it
                 directly on YouTube instead.
               </p>
@@ -501,23 +497,23 @@ export function VideoPlayerPage({
               href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710]"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f]"
             >
               <span>Open on YouTube</span>
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </a>
           </div>
         ) : (
-          <div ref={playerMountRef} className="relative aspect-video w-full bg-black" />
+          <div ref={playerMountRef} className="relative aspect-video w-full bg-[#14110f]" />
         )}
       </div>
 
-      <div className="mt-6 flex flex-col gap-5 border-b border-[#2a2a33] pb-8 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-6 flex flex-col gap-5 border-b border-[#3a322a] pb-8 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          <h1 className="text-2xl font-bold tracking-tight text-[#f4ece1] sm:text-3xl">
             {displayTitle}
           </h1>
-          <p className="mt-1.5 text-sm text-zinc-400">
+          <p className="mt-1.5 text-sm text-[#b9aa98]">
             <span>Watching Alone</span>
             <span className="mx-2" aria-hidden="true">
               ·
@@ -547,16 +543,16 @@ export function VideoPlayerPage({
           <button
             type="button"
             onClick={handleShareVideo}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#14141a] px-4 py-2.5 text-sm font-medium text-white whitespace-nowrap transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2.5 text-sm font-medium text-[#f4ece1] whitespace-nowrap transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
           >
-            <Share2 className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
+            <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
             <span>Share</span>
           </button>
 
           <button
             type="button"
             onClick={handleInviteFriends}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-[#f2a33a] px-5 py-2.5 text-sm font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
           >
             <Users className="h-4 w-4" aria-hidden="true" />
             <span>Invite friends</span>
@@ -566,7 +562,7 @@ export function VideoPlayerPage({
 
       {relatedVideos.length > 0 && (
         <div className="mt-8">
-          <h2 className="font-display text-lg font-semibold text-white">
+          <h2 className="text-lg font-bold text-[#f4ece1]">
             Sample Videos
           </h2>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">

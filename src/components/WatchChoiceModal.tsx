@@ -36,7 +36,7 @@ export function WatchChoiceModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#14110f]/90 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="watch-choice-title"
@@ -44,10 +44,10 @@ export function WatchChoiceModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-t-2xl border border-[#2a2a33] bg-[#14141a] p-5 sm:rounded-2xl sm:p-6">
+      <div className="w-full max-w-md rounded-t-[20px] border border-[#3a322a] bg-[#1e1a16] p-5 sm:rounded-[20px] sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded-lg border border-[#2a2a33] bg-[#08080A]">
+            <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded-xl border border-[#3a322a] bg-[#14110f]">
               {!imgError ? (
                 <img
                   src={video.thumbnail}
@@ -58,17 +58,17 @@ export function WatchChoiceModal({
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center">
-                  <Film className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
+                  <Film className="h-5 w-5 text-[#f2a33a]" aria-hidden="true" />
                 </div>
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[#b9aa98]">
                 Choose how to watch
               </p>
               <h2
                 id="watch-choice-title"
-                className="mt-0.5 font-display text-base font-semibold text-white line-clamp-2"
+                className="mt-0.5 text-base font-bold text-[#f4ece1] line-clamp-2"
               >
                 {video.title}
               </h2>
@@ -79,7 +79,7 @@ export function WatchChoiceModal({
             type="button"
             onClick={onClose}
             aria-label="Close watch options"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 cursor-pointer"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#b9aa98] transition-colors hover:bg-[#2a241e] hover:text-[#f4ece1] active:bg-[#3a322a] cursor-pointer"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -89,13 +89,13 @@ export function WatchChoiceModal({
           <button
             type="button"
             onClick={() => onWatchTogether(video)}
-            className="flex w-full min-h-[56px] items-center justify-between gap-3 rounded-xl bg-[#E50914] px-4 py-3 text-left text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+            className="flex w-full min-h-[56px] items-center justify-between gap-3 rounded-full bg-[#f2a33a] px-5 py-3 text-left text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
           >
             <div className="flex items-center gap-3">
               <Users className="h-5 w-5 shrink-0" aria-hidden="true" />
               <div>
-                <p className="font-display text-sm font-semibold">Watch Together</p>
-                <p className="text-xs text-white/85">
+                <p className="text-sm font-bold">Watch Together</p>
+                <p className="text-xs text-[#1a1208]/80">
                   {video.positionSeconds && video.positionSeconds > 0
                     ? `Start a private room at ${formatClockDuration(video.positionSeconds)}`
                     : 'Create a private room with invite link & chat'}
@@ -107,13 +107,13 @@ export function WatchChoiceModal({
           <button
             type="button"
             onClick={() => onWatchAlone(video)}
-            className="flex w-full min-h-[56px] items-center justify-between gap-3 rounded-xl border border-[#2a2a33] bg-[#1b1b24] px-4 py-3 text-left text-white transition-colors hover:border-[#E50914] active:bg-[#282834] cursor-pointer"
+            className="flex w-full min-h-[56px] items-center justify-between gap-3 rounded-full border border-[#3a322a] bg-[#14110f] px-5 py-3 text-left text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
           >
             <div className="flex items-center gap-3">
-              <Play className="h-5 w-5 text-[#E50914] shrink-0 fill-current" aria-hidden="true" />
+              <Play className="h-5 w-5 text-[#f2a33a] shrink-0 fill-current" aria-hidden="true" />
               <div>
-                <p className="font-display text-sm font-semibold">Watch Alone</p>
-                <p className="text-xs text-zinc-400">
+                <p className="text-sm font-bold">Watch Alone</p>
+                <p className="text-xs text-[#b9aa98]">
                   {video.positionSeconds && video.positionSeconds > 0
                     ? `Resume solo playback at ${formatClockDuration(video.positionSeconds)}`
                     : 'Solo playback right now, no room or chat'}

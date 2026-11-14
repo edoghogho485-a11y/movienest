@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Outfit", system-ui, -apple-system, sans-serif;
-  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  --font-sans: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @layer base {
   html {
-    background-color: #08080a;
-    color: #f8fafc;
+    background-color: #14110f;
+    color: #f4ece1;
     font-family: var(--font-sans);
     scroll-behavior: smooth;
     -webkit-font-smoothing: antialiased;
   }
 
   body {
-    background-color: #08080a;
-    color: #f8fafc;
+    background-color: #14110f;
+    color: #f4ece1;
     overflow-x: hidden;
   }
 }

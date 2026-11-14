@@ -1,4 +1,4 @@
-import { Bookmark, Clapperboard, Film, Home, Users } from 'lucide-react';
+import { Bookmark, Film, Home, Users } from 'lucide-react';
 
 export type NavSection = 'home' | 'movies' | 'watch-party' | 'my-list';
 
@@ -25,22 +25,15 @@ export function Sidebar({ activeNav, onSelectNav }: SidebarProps) {
   return (
     <aside
       aria-label="Primary sidebar navigation"
-      className="hidden lg:flex lg:w-56 lg:shrink-0 lg:flex-col lg:sticky lg:top-0 lg:h-screen border-r border-white/10 bg-[#0A0A0E]"
+      className="hidden lg:flex lg:w-56 lg:shrink-0 lg:flex-col lg:sticky lg:top-0 lg:h-screen border-r border-[#3a322a] bg-[#14110f]"
     >
-      <div className="flex h-16 items-center gap-2.5 border-b border-[#2a2a33] px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E50914]">
-          <Clapperboard className="h-4 w-4 text-white" aria-hidden="true" />
-        </div>
-        <button
-          type="button"
-          onClick={() => onSelectNav('home')}
-          className="font-display text-lg font-bold tracking-tight text-white cursor-pointer"
-        >
-          Movie<span className="text-[#E50914]">Nest</span>
-        </button>
+      <div className="flex h-16 items-center border-b border-[#3a322a] px-5">
+        <span className="text-xs font-bold uppercase tracking-wider text-[#b9aa98]">
+          Browse
+        </span>
       </div>
 
-      <nav className="flex-1 space-y-1.5 px-3 py-5">
+      <nav className="flex-1 space-y-2 px-3 py-5">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = activeNav === item.id;
@@ -50,15 +43,15 @@ export function Sidebar({ activeNav, onSelectNav }: SidebarProps) {
               type="button"
               onClick={() => onSelectNav(item.id)}
               aria-current={isActive ? 'page' : undefined}
-              className={`flex w-full min-h-[44px] items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors active:bg-[#20202b] cursor-pointer ${
+              className={`flex w-full min-h-[44px] items-center gap-3 rounded-full px-4 py-2.5 text-sm transition-colors cursor-pointer ${
                 isActive
-                  ? 'bg-[#E50914]/15 text-white border border-[#E50914]/50'
-                  : 'text-zinc-400 border border-transparent hover:bg-white/5 hover:text-white'
+                  ? 'border border-[#f2a33a] bg-[#1e1a16] font-bold text-[#f4ece1]'
+                  : 'border border-transparent font-medium text-[#b9aa98] hover:bg-[#1e1a16] hover:text-[#f4ece1]'
               }`}
             >
               <Icon
                 className={`h-4 w-4 shrink-0 ${
-                  isActive ? 'text-[#E50914]' : 'text-zinc-400'
+                  isActive ? 'text-[#f2a33a]' : 'text-[#b9aa98]'
                 }`}
                 aria-hidden="true"
               />
@@ -68,9 +61,9 @@ export function Sidebar({ activeNav, onSelectNav }: SidebarProps) {
         })}
       </nav>
 
-      <div className="border-t border-white/10 p-4">
-        <p className="text-xs leading-relaxed text-zinc-500">
-          Sync YouTube movies with friends on phones and laptops.
+      <div className="border-t border-[#3a322a] p-4">
+        <p className="text-xs leading-relaxed text-[#b9aa98]">
+          Watch synced movies with friends or press play on your own.
         </p>
       </div>
     </aside>
@@ -82,7 +75,7 @@ export function MobileBottomNav({ activeNav, onSelectNav }: SidebarProps) {
   return (
     <nav
       aria-label="Mobile navigation"
-      className="fixed inset-x-0 bottom-0 z-30 grid h-14 grid-cols-4 border-t border-[#2a2a33] bg-[#0A0A0E] lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 grid h-14 grid-cols-4 border-t border-[#3a322a] bg-[#14110f] lg:hidden"
     >
       {NAV_ITEMS.map((item) => {
         const Icon = item.icon;
@@ -93,12 +86,12 @@ export function MobileBottomNav({ activeNav, onSelectNav }: SidebarProps) {
             type="button"
             onClick={() => onSelectNav(item.id)}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors active:bg-[#1a1a24] cursor-pointer ${
-              isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+            className={`flex min-h-[44px] flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors active:bg-[#1e1a16] cursor-pointer ${
+              isActive ? 'text-[#f4ece1]' : 'text-[#b9aa98] hover:text-[#f4ece1]'
             }`}
           >
             <Icon
-              className={`h-4 w-4 ${isActive ? 'text-[#E50914]' : 'text-zinc-400'}`}
+              className={`h-4 w-4 ${isActive ? 'text-[#f2a33a]' : 'text-[#b9aa98]'}`}
               aria-hidden="true"
             />
             <span>{item.label}</span>

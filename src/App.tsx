@@ -1,8 +1,11 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Bookmark, Play, Search, Users, X } from 'lucide-react';
 import { Sidebar, MobileBottomNav, NavSection } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { HeroBanner } from './components/HeroBanner';
+import { HomeMoodResults } from './components/HomeMoodResults';
+import { TonightsPicksRow } from './components/TonightsPicksRow';
+import { MovieNestLogo } from './components/MovieNestLogo';
 import { ContinueWatchingRow } from './components/ContinueWatchingRow';
 import { MyListPage } from './components/MyListPage';
 import { CategoryJumpTarget, CategoryTiles } from './components/CategoryTiles';
@@ -23,8 +26,14 @@ import { FEATURED_VIDEOS } from './data/videos';
 import { ArchiveMovieItem, getArchiveThumbnail } from './lib/archive';
 import { WatchHistoryItem, WatchLaterItem } from './lib/localLists';
 import {
+  getMoodVideosFromCache,
+  getTonightsPicksFromCache,
+  loadCachedMoodAndPickRows,
+  MoodId,
+  pickSurpriseFromCache,
+} from './lib/moodCatalog';
+import {
   getArchiveWatchAloneLink,
-  getSiteShareLink,
   getWatchAloneLink,
   ShareTarget,
 } from './lib/share';
@@ -225,6 +234,13 @@ export default function App() {
   const [seeAllData, setSeeAllData] = useState<SeeAllViewData | null>(null);
   const [forceLoadSlug, setForceLoadSlug] = useState<string | null>(null);
 
+  // Cached genre rows and Tonight's picks for Home mood filters (zero extra YouTube searches)
+  const [cachedGenreVideos, setCachedGenreVideos] = useState<Record<string, YouTubeSearchResult[]>>({});
+  const [cachedFullMovies, setCachedFullMovies] = useState<YouTubeSearchResult[]>([]);
+  const [selectedMood, setSelectedMood] = useState<MoodId | null>(null);
+  const [surpriseVideo, setSurpriseVideo] = useState<YouTubeSearchResult | null>(null);
+  const moodCacheLoadedRef = useRef(false);
+
   // TopBar / Movies search state
   const [searchQuery, setSearchQuery] = useState('');
   const [moviesSearchInput, setMoviesSearchInput] = useState('');
@@ -344,6 +360,20 @@ export default function App() {
       setLibraryLoading(false);
     });
   }, [watchingVideo]);
+
+  // Hydrate mood filter rows & Tonight's picks from Supabase search_cache (zero YouTube API quota calls)
+  useEffect(() => {
+    if (watchingVideo || moodCacheLoadedRef.current) return;
+    moodCacheLoadedRef.current = true;
+    void loadCachedMoodAndPickRows().then(({ bySlug, fullMovies }) => {
+      setCachedGenreVideos((prev) => ({ ...bySlug, ...prev }));
+      setCachedFullMovies(fullMovies);
+    });
+  }, [watchingVideo]);
+
+  const handleGenreVideosLoaded = useCallback((slug: string, videos: YouTubeSearchResult[]) => {
+    setCachedGenreVideos((prev) => ({ ...prev, [slug]: videos }));
+  }, []);
 
   // Join Supabase Realtime presence on channel "lobby" ONLY when on the home page
   const isHomePage =
@@ -670,13 +700,6 @@ export default function App() {
     });
   };
 
-  const openShareForSite = () => {
-    setShareTarget({
-      kind: 'site',
-      url: getSiteShareLink(),
-    });
-  };
-
   const clearRoomAndSubpages = () => {
     setActiveRoom(null);
     setWatchingVideo(null);
@@ -743,7 +766,7 @@ export default function App() {
   const handleJumpToGenre = (genre: CategoryJumpTarget) => {
     setSeeAllData(null);
     setForceLoadSlug(genre.slug);
-    if (activeNav === 'watch-party') {
+    if (activeNav !== 'movies') {
       setActiveNav('movies');
     }
 
@@ -795,11 +818,66 @@ export default function App() {
 
   const focusPasteBar = () => {
     handleClearSearch();
-    const el = document.getElementById('home-paste-youtube-input');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.focus();
+    const existing = document.getElementById('home-paste-youtube-input');
+    if (existing) {
+      existing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      existing.focus();
+      return;
     }
+    setActiveNav('watch-party');
+    window.setTimeout(() => {
+      const el = document.getElementById('home-paste-youtube-input');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.focus();
+      }
+    }, 80);
+  };
+
+  const moodVideos =
+    selectedMood && selectedMood !== 'surprise'
+      ? getMoodVideosFromCache(selectedMood, cachedGenreVideos)
+      : [];
+  const tonightsPicks = getTonightsPicksFromCache(cachedGenreVideos, cachedFullMovies);
+
+  const handleSelectMood = (moodId: MoodId) => {
+    if (moodId === 'surprise') {
+      setSelectedMood('surprise');
+      setSurpriseVideo((current) =>
+        pickSurpriseFromCache(cachedGenreVideos, cachedFullMovies, current?.videoId)
+      );
+      return;
+    }
+    setSelectedMood((prev) => (prev === moodId ? null : moodId));
+  };
+
+  const handleAnotherSurprise = () => {
+    setSurpriseVideo((current) =>
+      pickSurpriseFromCache(cachedGenreVideos, cachedFullMovies, current?.videoId)
+    );
+  };
+
+  const handleHeroWatchAlone = () => {
+    const featured = tonightsPicks[0];
+    if (featured) {
+      enterWatchAlone({
+        id: featured.videoId,
+        title: featured.title,
+        category: featured.channelTitle || 'Movie',
+        youtubeId: featured.videoId,
+        thumbnail: featured.thumbnail,
+      });
+      return;
+    }
+    const fallback = LIBRARY_VIDEOS[0];
+    enterWatchAlone({
+      id: fallback.id,
+      title: fallback.title,
+      category: fallback.category,
+      youtubeId: fallback.youtubeId,
+      thumbnail: fallback.thumbnail,
+      duration: fallback.duration,
+    });
   };
 
   const showBrowseContent =
@@ -811,7 +889,7 @@ export default function App() {
     !seeAllData;
 
   return (
-    <div id="top" className="min-h-screen bg-[#08080A] text-white flex pb-14 lg:pb-0">
+    <div id="top" className="min-h-screen bg-[#14110f] text-[#f4ece1] flex pb-16 lg:pb-0">
       <Sidebar activeNav={activeNav} onSelectNav={handleSelectNav} />
 
       <div className="flex-1 min-w-0 flex flex-col">
@@ -838,22 +916,22 @@ export default function App() {
         <main className="flex-1">
           {roomLoading ? (
             <section className="mx-auto max-w-2xl px-4 py-20 text-center sm:px-6">
-              <p className="font-display text-lg font-semibold text-white">
+              <p className="text-lg font-bold text-[#f4ece1]">
                 Loading screening room...
               </p>
-              <p className="mt-2 text-sm text-zinc-400">
+              <p className="mt-2 text-sm text-[#b9aa98]">
                 Checking your room code with MovieNest.
               </p>
             </section>
           ) : roomNotFoundCode ? (
             <section className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
-              <div className="rounded-2xl border border-[#2a2a33] bg-[#14141a] p-6 sm:p-8">
-                <h1 className="font-display text-2xl font-bold text-white">
+              <div className="rounded-[20px] border border-[#3a322a] bg-[#1e1a16] p-6 sm:p-8">
+                <h1 className="text-2xl font-bold text-[#f4ece1]">
                   Room not found
                 </h1>
-                <p className="mt-2 text-sm text-zinc-400">
+                <p className="mt-2 text-sm text-[#b9aa98]">
                   We couldn&apos;t find a room with code{' '}
-                  <span className="font-mono font-semibold text-[#E50914]">
+                  <span className="font-mono font-bold text-[#f2a33a]">
                     {roomNotFoundCode}
                   </span>
                   . It may have a typo or hasn&apos;t been created yet.
@@ -862,14 +940,14 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleGoHome}
-                    className="min-h-[44px] rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                    className="min-h-[44px] rounded-full border border-[#3a322a] bg-[#14110f] px-5 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                   >
                     Back to Home
                   </button>
                   <button
                     type="button"
                     onClick={openJoinRoom}
-                    className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                    className="min-h-[44px] rounded-full bg-[#f2a33a] px-5 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
                   >
                     Try Another Code
                   </button>
@@ -878,13 +956,13 @@ export default function App() {
             </section>
           ) : roomLockedCode ? (
             <section className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
-              <div className="rounded-2xl border border-[#2a2a33] bg-[#14141a] p-6 sm:p-8">
-                <h1 className="font-display text-2xl font-bold text-white">
+              <div className="rounded-[20px] border border-[#3a322a] bg-[#1e1a16] p-6 sm:p-8">
+                <h1 className="text-2xl font-bold text-[#f4ece1]">
                   This room is locked
                 </h1>
-                <p className="mt-2 text-sm text-zinc-400">
+                <p className="mt-2 text-sm text-[#b9aa98]">
                   The host has locked room{' '}
-                  <span className="font-mono font-semibold text-[#E50914]">
+                  <span className="font-mono font-bold text-[#f2a33a]">
                     {roomLockedCode}
                   </span>{' '}
                   so new guests cannot join right now.
@@ -893,14 +971,14 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleGoHome}
-                    className="min-h-[44px] rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                    className="min-h-[44px] rounded-full border border-[#3a322a] bg-[#14110f] px-5 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                   >
                     Back to Home
                   </button>
                   <button
                     type="button"
                     onClick={openJoinRoom}
-                    className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                    className="min-h-[44px] rounded-full bg-[#f2a33a] px-5 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
                   >
                     Try Another Code
                   </button>
@@ -973,15 +1051,15 @@ export default function App() {
               {searchQuery && (
                 <section
                   aria-label="YouTube search results"
-                  className="px-4 py-6 sm:px-6 lg:px-8 border-b border-[#2a2a33]"
+                  className="px-4 py-6 sm:px-6 lg:px-8 border-b border-[#3a322a]"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h2 className="font-display text-xl font-semibold text-white">
+                      <h2 className="text-xl font-bold text-[#f4ece1]">
                         Results for &ldquo;{searchQuery}&rdquo;
                       </h2>
                       {!searching && searchResults && (
-                        <p className="mt-0.5 text-xs text-zinc-400">
+                        <p className="mt-0.5 text-xs text-[#b9aa98]">
                           {searchResults.length}{' '}
                           {searchResults.length === 1 ? 'video' : 'videos'} found
                         </p>
@@ -990,9 +1068,9 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleClearSearch}
-                      className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#14141a] px-3 py-1.5 text-xs font-medium text-zinc-200 hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-xs font-medium text-[#f4ece1] hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                     >
-                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                      <X className="h-4 w-4" aria-hidden="true" />
                       <span>Clear search</span>
                     </button>
                   </div>
@@ -1002,32 +1080,32 @@ export default function App() {
                       {[0, 1, 2, 3].map((slot) => (
                         <div
                           key={slot}
-                          className="rounded-xl border border-[#2a2a33] bg-[#14141a] p-2.5 animate-pulse"
+                          className="rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3"
                         >
-                          <div className="aspect-video w-full rounded-lg bg-[#1d1d26]" />
-                          <div className="mt-3 h-4 w-3/4 rounded bg-[#1d1d26]" />
-                          <div className="mt-2 h-3 w-1/2 rounded bg-[#1d1d26]" />
+                          <div className="aspect-video w-full rounded-xl bg-[#2a241e]" />
+                          <div className="mt-3 h-4 w-3/4 rounded bg-[#2a241e]" />
+                          <div className="mt-2 h-3 w-1/2 rounded bg-[#2a241e]" />
                         </div>
                       ))}
                     </div>
                   ) : searchError ? (
-                    <div className="mt-5 rounded-xl border border-[#2a2a33] bg-[#14141a] p-6 text-center">
-                      <p className="text-sm font-medium text-white">
+                    <div className="mt-5 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-6 text-center">
+                      <p className="text-sm font-medium text-[#f4ece1]">
                         Search is resting, try again tomorrow, or paste a link
                       </p>
                       <button
                         type="button"
                         onClick={focusPasteBar}
-                        className="mt-3 inline-flex min-h-[40px] items-center justify-center rounded-lg bg-[#E50914] px-4 py-2 text-xs font-semibold text-white hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                        className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-full bg-[#f2a33a] px-5 py-2 text-xs font-bold text-[#1a1208] hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
                       >
                         Paste a YouTube link
                       </button>
                     </div>
                   ) : searchResults && searchResults.length === 0 ? (
-                    <div className="mt-5 rounded-xl border border-[#2a2a33] bg-[#14141a] p-6 text-center">
-                      <p className="text-sm text-zinc-300">
+                    <div className="mt-5 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-6 text-center">
+                      <p className="text-sm text-[#b9aa98]">
                         No embeddable full-length movies matched &ldquo;{searchQuery}&rdquo;. Try
-                        another title or paste a YouTube link below.
+                        another title or paste a YouTube link.
                       </p>
                     </div>
                   ) : searchResults ? (
@@ -1049,56 +1127,56 @@ export default function App() {
 
               {activeNav === 'watch-party' ? (
                 <section className="px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-                  <div className="rounded-2xl border border-[#2a2a33] bg-[#14141a] p-5 sm:p-7">
+                  <div className="rounded-[20px] border border-[#3a322a] bg-[#1e1a16] p-5 sm:p-7">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="inline-flex items-center gap-2 text-xs font-medium text-zinc-200">
-                        <span className="h-2 w-2 rounded-full bg-[#E50914]" aria-hidden="true" />
+                      <div className="inline-flex items-center gap-2 text-xs font-medium text-[#b9aa98]">
+                        <span className="h-2 w-2 rounded-full bg-[#f2a33a]" aria-hidden="true" />
                         <span className="tabular-nums">{onlineCount} online now</span>
                       </div>
                     </div>
 
-                    <h1 className="mt-3 font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                    <h1 className="mt-3 text-2xl font-bold tracking-tight text-[#f4ece1] sm:text-3xl">
                       Watch Party
                     </h1>
-                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-300">
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#b9aa98]">
                       Create a private room or enter a friend&apos;s room code to watch YouTube
                       movies in sync with live chat.
                     </p>
 
                     <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
                       {/* Create Room card */}
-                      <div className="rounded-xl border border-[#2a2a33] bg-[#0d0d12] p-4 sm:p-5 flex flex-col justify-between gap-4">
+                      <div className="rounded-2xl border border-[#3a322a] bg-[#14110f] p-4 sm:p-5 flex flex-col justify-between gap-4">
                         <div>
-                          <h2 className="font-display text-base font-semibold text-white">
+                          <h2 className="text-base font-bold text-[#f4ece1]">
                             Start a new room
                           </h2>
-                          <p className="mt-1 text-xs text-zinc-400">
+                          <p className="mt-1 text-xs text-[#b9aa98]">
                             Pick a movie or paste any YouTube link to generate a shareable code.
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => openCreateRoom()}
-                          className="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                          className="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
                         >
                           <Play className="h-4 w-4 fill-current" aria-hidden="true" />
-                          <span>Create Room</span>
+                          <span>Start a room</span>
                         </button>
                       </div>
 
                       {/* Join Room with inline code box */}
                       <form
                         onSubmit={handleWatchPartyInlineJoin}
-                        className="rounded-xl border border-[#2a2a33] bg-[#0d0d12] p-4 sm:p-5 flex flex-col justify-between gap-3"
+                        className="rounded-2xl border border-[#3a322a] bg-[#14110f] p-4 sm:p-5 flex flex-col justify-between gap-3"
                       >
                         <div>
                           <label
                             htmlFor="watch-party-join-input"
-                            className="font-display text-base font-semibold text-white"
+                            className="text-base font-bold text-[#f4ece1]"
                           >
                             Join with a room code
                           </label>
-                          <p className="mt-1 text-xs text-zinc-400">
+                          <p className="mt-1 text-xs text-[#b9aa98]">
                             Paste an invite link or type a code like NEST-7K4M2Q.
                           </p>
                         </div>
@@ -1113,20 +1191,20 @@ export default function App() {
                               if (partyJoinError) setPartyJoinError('');
                             }}
                             placeholder="e.g. NEST-7K4M2Q"
-                            className="min-w-0 flex-1 min-h-[44px] rounded-lg border border-[#2a2a33] bg-[#14141a] px-3.5 py-2 font-mono text-sm text-white placeholder:font-sans placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none"
+                            className="min-w-0 flex-1 min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 font-mono text-sm text-[#f4ece1] placeholder:font-sans placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
                           />
                           <button
                             type="submit"
                             disabled={partyJoining}
-                            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-4 py-2 text-sm font-semibold text-white whitespace-nowrap transition-colors hover:border-[#E50914] active:bg-[#282834] disabled:opacity-60 cursor-pointer"
+                            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-5 py-2 text-sm font-medium text-[#f4ece1] whitespace-nowrap transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-60 cursor-pointer"
                           >
-                            <Users className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
-                            <span>{partyJoining ? 'Joining...' : 'Join Room'}</span>
+                            <Users className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                            <span>{partyJoining ? 'Joining...' : 'Join room'}</span>
                           </button>
                         </div>
 
                         {partyJoinError && (
-                          <p className="text-xs text-[#F87171]" role="alert">
+                          <p className="text-xs text-[#f2a33a]" role="alert">
                             {partyJoinError}
                           </p>
                         )}
@@ -1141,16 +1219,16 @@ export default function App() {
                     onSavedToLibrary={handleSavedToLibrary}
                   />
 
-                  <div className="grid grid-cols-1 gap-6 border-t border-[#2a2a33] pt-8 md:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-6 border-t border-[#3a322a] pt-8 md:grid-cols-3">
                     {HOW_IT_WORKS.map((item) => (
                       <div key={item.step} className="space-y-1.5">
-                        <p className="font-mono text-sm font-medium text-[#E50914] tabular-nums">
+                        <p className="font-mono text-sm font-bold text-[#f2a33a] tabular-nums">
                           {item.step}
                         </p>
-                        <h2 className="font-display text-base font-semibold text-white">
+                        <h2 className="text-base font-bold text-[#f4ece1]">
                           {item.title}
                         </h2>
-                        <p className="text-sm leading-relaxed text-zinc-400">{item.description}</p>
+                        <p className="text-sm leading-relaxed text-[#b9aa98]">{item.description}</p>
                       </div>
                     ))}
                   </div>
@@ -1173,91 +1251,64 @@ export default function App() {
                   onRemoveHistory={removeFromHistory}
                   onClearHistory={clearAllHistory}
                 />
-              ) : (
+              ) : activeNav === 'movies' ? (
                 <>
-                  {activeNav === 'home' && (
-                    <>
-                      <HeroBanner
-                        onlineCount={onlineCount}
-                        onWatchClick={(video) => setChoiceVideo(video)}
-                        onShareVideoClick={(video) =>
-                          openShareForVideo(video.youtubeId ?? video.id, video.title)
-                        }
-                        onInviteFriendsSite={openShareForSite}
-                      />
-                      <ContinueWatchingRow
-                        items={continueWatching}
-                        onWatch={(item) => openChoiceForLocalItem(item, item.position)}
-                        onCreateRoom={(item) => openCreateRoomForLocalItem(item, item.position)}
-                        onShare={openShareForLocalItem}
-                      />
-                      <PasteYouTubeBar
-                        variant="home"
-                        inputId="home-paste-youtube-input"
-                        onCreateRoomWithVideo={openCreateRoomFromPasted}
-                        onSavedToLibrary={handleSavedToLibrary}
-                      />
-                    </>
-                  )}
+                  <section className="px-4 pt-6 pb-2 sm:px-6 lg:px-8 space-y-4">
+                    <div>
+                      <h1 className="text-2xl font-bold tracking-tight text-[#f4ece1] sm:text-3xl">
+                        Movies
+                      </h1>
+                      <p className="mt-1 text-sm text-[#b9aa98]">
+                        Search full movies on YouTube or browse every genre below.
+                      </p>
+                    </div>
 
-                  {activeNav === 'movies' && (
-                    <section className="px-4 pt-6 pb-2 sm:px-6 lg:px-8 space-y-4">
-                      <div>
-                        <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                          Movies
-                        </h1>
-                        <p className="mt-1 text-sm text-zinc-400">
-                          Search full movies on YouTube or browse every genre below.
-                        </p>
-                      </div>
-
-                      {hasYouTubeApiKey ? (
-                        <form
-                          onSubmit={handleMoviesSearchFormSubmit}
-                          className="flex items-center gap-2 max-w-xl"
+                    {hasYouTubeApiKey && (
+                      <form
+                        onSubmit={handleMoviesSearchFormSubmit}
+                        className="flex items-center gap-2 max-w-xl"
+                      >
+                        <div className="relative flex-1">
+                          <Search
+                            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
+                            aria-hidden="true"
+                          />
+                          <input
+                            type="search"
+                            value={moviesSearchInput}
+                            onChange={(e) => setMoviesSearchInput(e.target.value)}
+                            placeholder="Search full movies on YouTube..."
+                            aria-label="Search movies"
+                            className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
+                          />
+                          {(moviesSearchInput || searchQuery) && (
+                            <button
+                              type="button"
+                              onClick={handleClearSearch}
+                              aria-label="Clear search"
+                              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
+                            >
+                              <X className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={!moviesSearchInput.trim() || searching}
+                          className="min-h-[44px] rounded-full bg-[#f2a33a] px-5 py-2 text-sm font-bold text-[#1a1208] whitespace-nowrap shrink-0 transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
                         >
-                          <div className="relative flex-1">
-                            <Search
-                              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
-                              aria-hidden="true"
-                            />
-                            <input
-                              type="search"
-                              value={moviesSearchInput}
-                              onChange={(e) => setMoviesSearchInput(e.target.value)}
-                              placeholder="Search full movies on YouTube..."
-                              aria-label="Search movies"
-                              className="w-full min-h-[44px] rounded-xl border border-[#2a2a33] bg-[#14141a] pl-10 pr-9 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none"
-                            />
-                            {(moviesSearchInput || searchQuery) && (
-                              <button
-                                type="button"
-                                onClick={handleClearSearch}
-                                aria-label="Clear search"
-                                className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 hover:text-white active:bg-white/10 cursor-pointer"
-                              >
-                                <X className="h-4 w-4" aria-hidden="true" />
-                              </button>
-                            )}
-                          </div>
-                          <button
-                            type="submit"
-                            disabled={!moviesSearchInput.trim() || searching}
-                            className="min-h-[44px] rounded-xl bg-[#E50914] px-4 py-2 text-sm font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
-                          >
-                            {searching ? 'Searching...' : 'Search'}
-                          </button>
-                        </form>
-                      ) : (
-                        <PasteYouTubeBar
-                          variant="modal"
-                          inputId="home-paste-youtube-input"
-                          onCreateRoomWithVideo={openCreateRoomFromPasted}
-                          onSavedToLibrary={handleSavedToLibrary}
-                        />
-                      )}
-                    </section>
-                  )}
+                          {searching ? 'Searching...' : 'Search'}
+                        </button>
+                      </form>
+                    )}
+
+                    <PasteYouTubeBar
+                      variant="home"
+                      inputId="home-paste-youtube-input"
+                      onCreateRoomWithVideo={openCreateRoomFromPasted}
+                      onSavedToLibrary={handleSavedToLibrary}
+                    />
+                  </section>
 
                   <CategoryTiles onSelectGenre={handleJumpToGenre} />
 
@@ -1282,6 +1333,55 @@ export default function App() {
                     onSavedToLibrary={handleSavedToLibrary}
                     onWatchLibraryItem={openChoiceForSharedLibrary}
                     onShareLibraryItem={(item) => openShareForVideo(item.video_id, item.title)}
+                    onGenreVideosLoaded={handleGenreVideosLoaded}
+                  />
+                </>
+              ) : (
+                <>
+                  {/* Home page order: TopBar (above), 2-panel Hero + Moods, Mood Results, Continue Watching, Tonight's picks, Footer (below) */}
+                  <HeroBanner
+                    onlineCount={onlineCount}
+                    selectedMood={selectedMood}
+                    onStartRoom={() => openCreateRoom()}
+                    onWatchAlone={handleHeroWatchAlone}
+                    onSelectMood={handleSelectMood}
+                  />
+
+                  <HomeMoodResults
+                    selectedMood={selectedMood}
+                    moodVideos={moodVideos}
+                    surpriseVideo={surpriseVideo}
+                    onClose={() => setSelectedMood(null)}
+                    onAnotherSurprise={handleAnotherSurprise}
+                    onWatchTogether={openCreateRoomFromSearch}
+                    onWatchAlone={(video) =>
+                      enterWatchAlone({
+                        id: video.videoId,
+                        title: video.title,
+                        category: video.channelTitle || 'Movie',
+                        youtubeId: video.videoId,
+                        thumbnail: video.thumbnail,
+                      })
+                    }
+                    onWatchCardChoice={openChoiceForSearch}
+                    onShare={(v) => openShareForVideo(v.videoId, v.title)}
+                    onSavedToLibrary={handleSavedToLibrary}
+                  />
+
+                  <ContinueWatchingRow
+                    items={continueWatching}
+                    onWatch={(item) => openChoiceForLocalItem(item, item.position)}
+                    onCreateRoom={(item) => openCreateRoomForLocalItem(item, item.position)}
+                    onShare={openShareForLocalItem}
+                  />
+
+                  <TonightsPicksRow
+                    videos={tonightsPicks}
+                    onWatch={openChoiceForSearch}
+                    onCreateRoom={openCreateRoomFromSearch}
+                    onShare={(v) => openShareForVideo(v.videoId, v.title)}
+                    onSavedToLibrary={handleSavedToLibrary}
+                    onBrowseAllMovies={() => handleSelectNav('movies')}
                   />
                 </>
               )}
@@ -1289,13 +1389,11 @@ export default function App() {
           )}
         </main>
 
-        <footer className="mt-10 border-t border-[#2a2a33]">
-          <div className="flex flex-col items-start justify-between gap-3 px-4 py-6 text-sm text-zinc-400 sm:flex-row sm:items-center sm:px-6 lg:px-8">
-            <div className="flex flex-col gap-1">
-              <p className="font-display font-semibold text-white">
-                Movie<span className="text-[#E50914]">Nest</span>
-              </p>
-              <p className="text-xs text-zinc-500">
+        <footer className="mt-10 border-t border-[#3a322a]">
+          <div className="flex flex-col items-start justify-between gap-4 px-4 py-6 text-sm text-[#b9aa98] sm:flex-row sm:items-center sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-1.5">
+              <MovieNestLogo />
+              <p className="text-xs text-[#b9aa98]">
                 MovieNest doesn&apos;t host any videos. Videos stream from YouTube and the Internet Archive.
               </p>
             </div>
@@ -1303,19 +1401,19 @@ export default function App() {
             <nav aria-label="Footer links" className="flex flex-wrap items-center gap-5">
               <a
                 href="/about.html"
-                className="inline-flex min-h-[36px] items-center text-xs font-medium text-zinc-400 transition-colors hover:text-[#E50914] hover:underline underline-offset-4"
+                className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
               >
                 About
               </a>
               <a
                 href="/terms.html"
-                className="inline-flex min-h-[36px] items-center text-xs font-medium text-zinc-400 transition-colors hover:text-[#E50914] hover:underline underline-offset-4"
+                className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
               >
                 Terms
               </a>
               <a
                 href="/privacy.html"
-                className="inline-flex min-h-[36px] items-center text-xs font-medium text-zinc-400 transition-colors hover:text-[#E50914] hover:underline underline-offset-4"
+                className="inline-flex min-h-[44px] items-center text-xs font-medium text-[#b9aa98] transition-colors hover:text-[#f2a33a] hover:underline underline-offset-4"
               >
                 Privacy
               </a>
@@ -1398,8 +1496,8 @@ export default function App() {
           aria-live="polite"
           className="pointer-events-none fixed bottom-16 left-1/2 z-50 -translate-x-1/2 lg:bottom-6"
         >
-          <div className="inline-flex items-center gap-2 rounded-xl border border-[#E50914]/60 bg-[#14141a] px-4 py-2.5 text-xs font-semibold text-white shadow-lg">
-            <Bookmark className="h-3.5 w-3.5 fill-[#E50914] text-[#E50914]" aria-hidden="true" />
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#f2a33a] bg-[#1e1a16] px-4 py-2.5 text-xs font-bold text-[#f4ece1]">
+            <Bookmark className="h-3.5 w-3.5 fill-[#f2a33a] text-[#f2a33a]" aria-hidden="true" />
             <span>{watchLaterToast}</span>
           </div>
         </div>

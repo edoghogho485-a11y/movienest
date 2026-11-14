@@ -38,6 +38,7 @@ interface GenreRowsProps {
   onSavedToLibrary: (item: SharedLibraryItem) => void;
   onWatchLibraryItem: (item: SharedLibraryItem) => void;
   onShareLibraryItem: (item: SharedLibraryItem) => void;
+  onGenreVideosLoaded?: (slug: string, videos: YouTubeSearchResult[]) => void;
 }
 
 // Single lazy-loaded YouTube genre row (fetches only when scrolled into view or jumped to)
@@ -49,6 +50,7 @@ function LazyGenreRow({
   onCreateRoom,
   onShare,
   onSavedToLibrary,
+  onLoaded,
 }: {
   genre: GenreDefinition;
   forceLoad: boolean;
@@ -57,6 +59,7 @@ function LazyGenreRow({
   onCreateRoom: (video: YouTubeSearchResult) => void;
   onShare: (video: YouTubeSearchResult) => void;
   onSavedToLibrary: (item: SharedLibraryItem) => void;
+  onLoaded?: (slug: string, videos: YouTubeSearchResult[]) => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const [shouldLoad, setShouldLoad] = useState(forceLoad);
@@ -102,12 +105,15 @@ function LazyGenreRow({
       if (cancelled) return;
       setVideos(results);
       setLoading(false);
+      if (results.length > 0) {
+        onLoaded?.(genre.slug, results);
+      }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [shouldLoad, videos, genre.query]);
+  }, [shouldLoad, videos, genre.query, genre.slug, onLoaded]);
 
   // Hide row completely when API/quota fails and no cached data exists
   if (videos !== null && videos.length === 0) {
@@ -117,7 +123,7 @@ function LazyGenreRow({
   return (
     <div id={`genre-${genre.slug}`} ref={rowRef} className="scroll-mt-20">
       <div className="flex items-center justify-between gap-4">
-        <h3 className="font-display text-lg font-semibold text-white">
+        <h3 className="text-lg font-bold text-[#f4ece1]">
           {genre.name}
         </h3>
 
@@ -125,35 +131,35 @@ function LazyGenreRow({
           <button
             type="button"
             onClick={() => onSeeAll(genre, videos)}
-            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 text-xs font-semibold text-zinc-300 transition-colors hover:text-[#E50914] active:bg-[#20202a] cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
           >
             <span>See all</span>
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
           </button>
         )}
       </div>
 
       {!shouldLoad || loading || videos === null ? (
-        <div className="mt-3 flex gap-4 overflow-hidden">
+        <div className="mt-3 flex gap-3.5 overflow-hidden">
           {[0, 1, 2, 3].map((slot) => (
             <div
               key={slot}
-              className="w-[240px] sm:w-[270px] shrink-0 rounded-xl border border-white/10 bg-[#111116] p-2.5 animate-pulse"
+              className="w-[260px] sm:w-[276px] shrink-0 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3"
             >
-              <div className="aspect-video w-full rounded-lg bg-[#1A1A22]" />
-              <div className="mt-3 h-4 w-3/4 rounded bg-[#1A1A22]" />
-              <div className="mt-2 h-3 w-1/2 rounded bg-[#1A1A22]" />
+              <div className="aspect-video w-full rounded-xl bg-[#2a241e]" />
+              <div className="mt-3 h-4 w-3/4 rounded bg-[#2a241e]" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-[#2a241e]" />
             </div>
           ))}
         </div>
       ) : (
-        <div className="mt-3 flex gap-4 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+        <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
           {videos.map((video) => (
             <YouTubeMovieCard
               key={`${genre.slug}-${video.videoId}`}
               video={video}
               defaultCategory={genre.defaultCategory}
-              className="w-[240px] sm:w-[270px] shrink-0 snap-start"
+              className="w-[260px] sm:w-[276px] shrink-0 snap-start"
               onWatch={onWatch}
               onCreateRoom={onCreateRoom}
               onShare={onShare}
@@ -240,11 +246,11 @@ function LazyArchiveGenreRow({
     <div id={`genre-${genre.slug}`} ref={rowRef} className="scroll-mt-20">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
-          <h3 className="font-display text-lg font-semibold text-white">
+          <h3 className="text-lg font-bold text-[#f4ece1]">
             {genre.name}
           </h3>
-          <span className="rounded-md border border-[#2a2a33] bg-[#14141a] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-300">
-            Archive
+          <span className="text-xs font-medium text-[#b9aa98]">
+            · Archive
           </span>
         </div>
 
@@ -252,34 +258,34 @@ function LazyArchiveGenreRow({
           <button
             type="button"
             onClick={() => onSeeAll(genre, movies)}
-            className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 text-xs font-semibold text-zinc-300 transition-colors hover:text-[#E50914] active:bg-[#20202a] cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
           >
             <span>See all</span>
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
           </button>
         )}
       </div>
 
       {!shouldLoad || loading || movies === null ? (
-        <div className="mt-3 flex gap-4 overflow-hidden">
+        <div className="mt-3 flex gap-3.5 overflow-hidden">
           {[0, 1, 2, 3].map((slot) => (
             <div
               key={slot}
-              className="w-[240px] sm:w-[270px] shrink-0 rounded-xl border border-white/10 bg-[#111116] p-2.5 animate-pulse"
+              className="w-[260px] sm:w-[276px] shrink-0 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3"
             >
-              <div className="aspect-video w-full rounded-lg bg-[#1A1A22]" />
-              <div className="mt-3 h-4 w-3/4 rounded bg-[#1A1A22]" />
-              <div className="mt-2 h-3 w-1/2 rounded bg-[#1A1A22]" />
+              <div className="aspect-video w-full rounded-xl bg-[#2a241e]" />
+              <div className="mt-3 h-4 w-3/4 rounded bg-[#2a241e]" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-[#2a241e]" />
             </div>
           ))}
         </div>
       ) : (
-        <div className="mt-3 flex gap-4 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+        <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
           {movies.map((movie) => (
             <ArchiveMovieCard
               key={`${genre.slug}-${movie.identifier}`}
               movie={movie}
-              className="w-[240px] sm:w-[270px] shrink-0 snap-start"
+              className="w-[260px] sm:w-[276px] shrink-0 snap-start"
               onWatch={onWatch}
               onCreateRoom={onCreateRoom}
               onShare={onShare}
@@ -303,13 +309,13 @@ function SharedLibraryCard({
   const [imgError, setImgError] = useState(false);
 
   return (
-    <div className="w-[220px] sm:w-[250px] shrink-0 snap-start flex flex-col">
+    <div className="w-[240px] sm:w-[260px] shrink-0 snap-start flex flex-col rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3 transition-colors hover:border-[#f2a33a]">
       <button
         type="button"
         onClick={() => onWatch(item)}
-        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-80 rounded-xl cursor-pointer"
+        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] active:opacity-80 rounded-xl cursor-pointer"
       >
-        <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-[#2a2a33] bg-[#14141a] transition-colors group-hover:border-[#E50914]">
+        <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#14110f]">
           {!imgError ? (
             <img
               src={getYouTubeThumbnail(item.video_id)}
@@ -319,40 +325,35 @@ function SharedLibraryCard({
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#14141a] p-3">
-              <Film className="h-6 w-6 text-[#E50914]" aria-hidden="true" />
-              <span className="text-xs font-medium text-zinc-200 text-center line-clamp-1">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#14110f] p-3">
+              <Film className="h-6 w-6 text-[#f2a33a]" aria-hidden="true" />
+              <span className="text-xs font-medium text-[#f4ece1] text-center line-clamp-1">
                 {item.title}
               </span>
             </div>
           )}
-          <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent"
-            aria-hidden="true"
-          />
         </div>
-        <h4 className="mt-2 font-display text-sm font-semibold text-zinc-100 line-clamp-1 group-hover:text-[#E50914] transition-colors">
+        <h4 className="mt-2.5 text-sm font-bold text-[#f4ece1] line-clamp-1 group-hover:text-[#f2a33a] transition-colors">
           {item.title}
         </h4>
       </button>
 
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <p className="text-xs text-zinc-400 truncate">{item.category}</p>
-        <div className="flex items-center gap-1 shrink-0">
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p className="text-xs text-[#b9aa98] truncate">{item.category}</p>
+        <div className="flex items-center gap-1.5 shrink-0">
           <BookmarkButton
             source="youtube"
             id={item.video_id}
             title={item.title}
             thumbnail={getYouTubeThumbnail(item.video_id)}
-            className="!min-h-[32px] !h-8 !w-8"
           />
           <button
             type="button"
             onClick={() => onShare(item)}
             aria-label={`Share ${item.title}`}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#14141a] text-zinc-300 transition-colors hover:border-white/30 hover:text-white active:bg-[#252530] cursor-pointer"
+            className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
           >
-            <Share2 className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+            <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -375,6 +376,7 @@ export function GenreRows({
   onSavedToLibrary,
   onWatchLibraryItem,
   onShareLibraryItem,
+  onGenreVideosLoaded,
 }: GenreRowsProps) {
   const nonEmptyLibraryCategories = SHARED_LIBRARY_CATEGORIES.map((category) => ({
     category,
@@ -397,6 +399,7 @@ export function GenreRows({
           onCreateRoom={onCreateRoomYouTube}
           onShare={onShareYouTube}
           onSavedToLibrary={onSavedToLibrary}
+          onLoaded={onGenreVideosLoaded}
         />
       ))}
 
@@ -417,10 +420,10 @@ export function GenreRows({
       {!libraryLoading &&
         nonEmptyLibraryCategories.map((group) => (
           <div key={group.category}>
-            <h3 className="font-display text-lg font-semibold text-white">
+            <h3 className="text-lg font-bold text-[#f4ece1]">
               Saved · {group.category}
             </h3>
-            <div className="mt-3 flex gap-4 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+            <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
               {group.items.map((item) => (
                 <SharedLibraryCard
                   key={item.id}

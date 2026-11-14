@@ -281,7 +281,7 @@ export function RoomModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#14110f]/90 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="room-modal-title"
@@ -289,11 +289,11 @@ export function RoomModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-white/15 bg-[#111116] p-5 shadow-2xl sm:rounded-2xl sm:p-6">
-        <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-[20px] border border-[#3a322a] bg-[#1e1a16] p-5 sm:rounded-[20px] sm:p-6">
+        <div className="flex items-center justify-between gap-4 border-b border-[#3a322a] pb-4">
           <h2
             id="room-modal-title"
-            className="font-display text-lg font-semibold text-white"
+            className="text-lg font-bold text-[#f4ece1]"
           >
             {createdRoom
               ? 'Room Created'
@@ -305,7 +305,7 @@ export function RoomModal({
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-[#b9aa98] transition-colors hover:bg-[#2a241e] hover:text-[#f4ece1] active:bg-[#3a322a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] cursor-pointer"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -314,23 +314,23 @@ export function RoomModal({
         {createdRoom ? (
           <div className="mt-5 space-y-5">
             <div>
-              <p className="text-sm text-zinc-300">
-                <span className="font-semibold text-white">{createdRoom.name}</span> is saved and
+              <p className="text-sm text-[#b9aa98]">
+                <span className="font-bold text-[#f4ece1]">{createdRoom.name}</span> is saved and
                 ready. Share this invite link with your friends:
               </p>
             </div>
 
-            <div className="space-y-3 rounded-xl border border-white/10 bg-[#181820] p-4">
+            <div className="space-y-3 rounded-2xl border border-[#3a322a] bg-[#14110f] p-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-zinc-400">Room code</span>
-                <span className="font-mono text-base font-semibold tracking-wider text-[#E50914]">
+                <span className="text-xs text-[#b9aa98]">Room code</span>
+                <span className="font-mono text-base font-bold tracking-wider text-[#f2a33a]">
                   {createdRoom.code}
                 </span>
               </div>
 
-              <div className="border-t border-white/10 pt-3">
-                <p className="text-xs text-zinc-400">Invite link</p>
-                <p className="mt-1 break-all font-mono text-xs text-zinc-200 select-all">
+              <div className="border-t border-[#3a322a] pt-3">
+                <p className="text-xs text-[#b9aa98]">Invite link</p>
+                <p className="mt-1 break-all font-mono text-xs text-[#f4ece1] select-all">
                   {inviteLink}
                 </p>
               </div>
@@ -341,11 +341,11 @@ export function RoomModal({
                 <button
                   type="button"
                   onClick={handleCopyInviteLink}
-                  className="inline-flex min-h-[44px] flex-1 sm:flex-initial items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                  className="inline-flex min-h-[44px] flex-1 sm:flex-initial items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                 >
                   {copied ? (
                     <>
-                      <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                      <Check className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
                       <span>Copied Link</span>
                     </>
                   ) : (
@@ -359,9 +359,9 @@ export function RoomModal({
                 <button
                   type="button"
                   onClick={handleShareInviteLink}
-                  className="inline-flex min-h-[44px] flex-1 sm:flex-initial items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                  className="inline-flex min-h-[44px] flex-1 sm:flex-initial items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                 >
-                  <Share2 className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
+                  <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
                   <span>Share</span>
                 </button>
               </div>
@@ -373,7 +373,7 @@ export function RoomModal({
                     onOpenRoom(createdRoom);
                   }
                 }}
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
               >
                 <span>Open Room</span>
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -386,7 +386,7 @@ export function RoomModal({
               <div>
                 <label
                   htmlFor="room-name-input"
-                  className="block text-sm font-medium text-zinc-200"
+                  className="block text-sm font-medium text-[#f4ece1]"
                 >
                   Room name
                 </label>
@@ -397,14 +397,14 @@ export function RoomModal({
                   value={roomName}
                   onChange={(e) => setRoomName(e.target.value)}
                   placeholder="Friday Movie Night"
-                  className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
+                  className="mt-1.5 w-full min-h-[44px] rounded-xl border border-[#3a322a] bg-[#14110f] px-3.5 py-2.5 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="video-select"
-                  className="block text-sm font-medium text-zinc-200"
+                  className="block text-sm font-medium text-[#f4ece1]"
                 >
                   Choose a video
                 </label>
@@ -412,7 +412,7 @@ export function RoomModal({
                   id="video-select"
                   value={selectedVideoId}
                   onChange={(e) => setSelectedVideoId(e.target.value)}
-                  className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] px-3.5 py-2.5 text-sm text-white focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
+                  className="mt-1.5 w-full min-h-[44px] rounded-xl border border-[#3a322a] bg-[#14110f] px-3.5 py-2.5 text-sm text-[#f4ece1] focus:border-[#f2a33a] focus:outline-none"
                 >
                   {!isKnownDropdownOption && initialVideo && (
                     <optgroup
@@ -454,7 +454,7 @@ export function RoomModal({
               </div>
 
               {errorMsg && (
-                <p className="text-xs text-[#F87171]" role="alert">
+                <p className="text-xs font-medium text-[#f2a33a]" role="alert">
                   {errorMsg}
                 </p>
               )}
@@ -472,9 +472,9 @@ export function RoomModal({
                       isSelectedInitial ? initialVideo?.source : 'youtube'
                     );
                   }}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                 >
-                  <Play className="h-4 w-4 text-[#E50914] fill-current" aria-hidden="true" />
+                  <Play className="h-4 w-4 text-[#f2a33a] fill-current" aria-hidden="true" />
                   <span>Watch Alone instead</span>
                 </button>
 
@@ -482,14 +482,14 @@ export function RoomModal({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="min-h-[44px] rounded-lg border border-[#2a2a33] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5 active:bg-white/10 cursor-pointer"
+                    className="min-h-[44px] rounded-full border border-[#3a322a] px-4 py-2.5 text-sm font-medium text-[#b9aa98] transition-colors hover:border-[#f2a33a] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-60 cursor-pointer"
+                    className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-[#f2a33a] px-5 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-60 cursor-pointer"
                   >
                     <Users className="h-4 w-4" aria-hidden="true" />
                     <span>{submitting ? 'Creating Room...' : 'Watch Together'}</span>
@@ -514,7 +514,7 @@ export function RoomModal({
             <div>
               <label
                 htmlFor="room-code-input"
-                className="block text-sm font-medium text-zinc-200"
+                className="block text-sm font-medium text-[#f4ece1]"
               >
                 Room code
               </label>
@@ -527,10 +527,10 @@ export function RoomModal({
                   if (errorMsg) setErrorMsg('');
                 }}
                 placeholder="e.g. NEST-7K4M2Q"
-                className="mt-1.5 w-full min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] px-3.5 py-2.5 font-mono text-sm text-white placeholder:font-sans placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
+                className="mt-1.5 w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2.5 font-mono text-sm text-[#f4ece1] placeholder:font-sans placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
               />
               {errorMsg && (
-                <p className="mt-1.5 text-xs text-[#F87171]" role="alert">
+                <p className="mt-1.5 text-xs font-medium text-[#f2a33a]" role="alert">
                   {errorMsg}
                 </p>
               )}
@@ -540,14 +540,14 @@ export function RoomModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="min-h-[44px] rounded-lg border border-[#2a2a33] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5 active:bg-white/10 cursor-pointer"
+                className="min-h-[44px] rounded-full border border-[#3a322a] px-5 py-2.5 text-sm font-medium text-[#b9aa98] transition-colors hover:border-[#f2a33a] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-60 cursor-pointer"
+                className="min-h-[44px] rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-60 cursor-pointer"
               >
                 {submitting ? 'Looking up room...' : 'Join Room'}
               </button>

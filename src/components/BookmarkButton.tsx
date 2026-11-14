@@ -12,7 +12,7 @@ interface BookmarkButtonProps {
   className?: string;
 }
 
-// Reusable Watch Later bookmark button with filled crimson state when saved
+// Reusable Watch Later bookmark pill button with filled amber state when saved
 export function BookmarkButton({
   source = 'youtube',
   id,
@@ -42,15 +42,15 @@ export function BookmarkButton({
         onClick={handleToggle}
         aria-pressed={saved}
         aria-label={saved ? `Remove ${title} from Watch Later` : `Save ${title} to Watch Later`}
-        className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors active:bg-[#252530] cursor-pointer ${
+        className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors active:bg-[#2a241e] cursor-pointer ${
           saved
-            ? 'border-[#E50914] bg-[#1b1013] text-white'
-            : 'border-[#2a2a33] bg-[#14141a] text-white hover:border-white/40'
+            ? 'border-[#f2a33a] bg-[#f2a33a] font-bold text-[#1a1208]'
+            : 'border-[#3a322a] bg-[#1e1a16] text-[#f4ece1] hover:border-[#f2a33a]'
         } ${className}`}
       >
         <Bookmark
           className={`h-4 w-4 shrink-0 ${
-            saved ? 'fill-[#E50914] text-[#E50914]' : 'text-[#E50914]'
+            saved ? 'fill-[#1a1208] text-[#1a1208]' : 'text-[#f2a33a]'
           }`}
           aria-hidden="true"
         />
@@ -66,15 +66,15 @@ export function BookmarkButton({
       aria-pressed={saved}
       aria-label={saved ? `Remove ${title} from Watch Later` : `Save ${title} to Watch Later`}
       title={saved ? 'Remove from Watch Later' : 'Save to Watch Later'}
-      className={`inline-flex min-h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border transition-colors active:bg-[#252530] cursor-pointer ${
+      className={`inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border transition-colors active:bg-[#2a241e] cursor-pointer ${
         saved
-          ? 'border-[#E50914] bg-[#1b1013] text-[#E50914]'
-          : 'border-white/15 bg-[#181820] text-zinc-200 hover:border-white/30'
+          ? 'border-[#f2a33a] bg-[#f2a33a] text-[#1a1208]'
+          : 'border-[#3a322a] bg-[#14110f] text-[#f4ece1] hover:border-[#f2a33a]'
       } ${className}`}
     >
       <Bookmark
-        className={`h-3.5 w-3.5 ${
-          saved ? 'fill-[#E50914] text-[#E50914]' : 'text-[#E50914]'
+        className={`h-4 w-4 ${
+          saved ? 'fill-[#1a1208] text-[#1a1208]' : 'text-[#f2a33a]'
         }`}
         aria-hidden="true"
       />

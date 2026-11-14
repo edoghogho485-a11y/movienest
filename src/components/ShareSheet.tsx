@@ -122,7 +122,7 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#14110f]/90 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="share-sheet-title"
@@ -130,15 +130,15 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-t-2xl border border-[#2a2a33] bg-[#14141a] p-5 sm:rounded-2xl sm:p-6">
-        <div className="flex items-start justify-between gap-3 border-b border-[#2a2a33] pb-4">
+      <div className="w-full max-w-md rounded-t-[20px] border border-[#3a322a] bg-[#1e1a16] p-5 sm:rounded-[20px] sm:p-6">
+        <div className="flex items-start justify-between gap-3 border-b border-[#3a322a] pb-4">
           <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-[#E50914]">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#f2a33a]">
               {headingLabel}
             </p>
             <h2
               id="share-sheet-title"
-              className="mt-1 font-display text-lg font-semibold text-white line-clamp-2"
+              className="mt-1 text-lg font-bold text-[#f4ece1] line-clamp-2"
             >
               {target.kind === 'site' ? 'MovieNest: Watch Together' : target.title}
             </h2>
@@ -148,13 +148,13 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
             type="button"
             onClick={onClose}
             aria-label="Close share sheet"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 cursor-pointer"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#b9aa98] transition-colors hover:bg-[#2a241e] hover:text-[#f4ece1] active:bg-[#3a322a] cursor-pointer"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
 
-        <p className="mt-3 rounded-xl border border-[#2a2a33] bg-[#0b0b0f] p-3 text-xs leading-relaxed text-zinc-300">
+        <p className="mt-3 rounded-2xl border border-[#3a322a] bg-[#14110f] p-3.5 text-xs leading-relaxed text-[#b9aa98]">
           {text}
         </p>
 
@@ -164,7 +164,7 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
             type="button"
             onClick={handleNativeShare}
             disabled={sharingNative}
-            className="mt-4 flex w-full min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#E50914] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-60 cursor-pointer"
+            className="mt-4 flex w-full min-h-[48px] items-center justify-center gap-2 rounded-full bg-[#f2a33a] px-5 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-60 cursor-pointer"
           >
             <Share2 className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{sharingNative ? 'Preparing card...' : 'Share…'}</span>
@@ -177,9 +177,9 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
             href={whatsappUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[#2a2a33] bg-[#1b1b24] px-3 py-2 text-xs sm:text-sm font-medium text-white transition-colors hover:border-[#E50914] active:bg-[#282834]"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-3 py-2 text-xs sm:text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e]"
           >
-            <MessageCircle className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
+            <MessageCircle className="h-4 w-4 text-[#f2a33a] shrink-0" aria-hidden="true" />
             <span>WhatsApp</span>
           </a>
 
@@ -187,9 +187,9 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
             href={telegramUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[#2a2a33] bg-[#1b1b24] px-3 py-2 text-xs sm:text-sm font-medium text-white transition-colors hover:border-[#E50914] active:bg-[#282834]"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-3 py-2 text-xs sm:text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e]"
           >
-            <Send className="h-4 w-4 text-sky-400 shrink-0" aria-hidden="true" />
+            <Send className="h-4 w-4 text-[#f2a33a] shrink-0" aria-hidden="true" />
             <span>Telegram</span>
           </a>
 
@@ -197,9 +197,9 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
             href={xUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[#2a2a33] bg-[#1b1b24] px-3 py-2 text-xs sm:text-sm font-medium text-white transition-colors hover:border-[#E50914] active:bg-[#282834]"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-3 py-2 text-xs sm:text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e]"
           >
-            <ExternalLink className="h-4 w-4 text-zinc-200 shrink-0" aria-hidden="true" />
+            <ExternalLink className="h-4 w-4 text-[#b9aa98] shrink-0" aria-hidden="true" />
             <span>X</span>
           </a>
 
@@ -207,9 +207,9 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
             href={facebookUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[#2a2a33] bg-[#1b1b24] px-3 py-2 text-xs sm:text-sm font-medium text-white transition-colors hover:border-[#E50914] active:bg-[#282834]"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-3 py-2 text-xs sm:text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e]"
           >
-            <ExternalLink className="h-4 w-4 text-blue-400 shrink-0" aria-hidden="true" />
+            <ExternalLink className="h-4 w-4 text-[#b9aa98] shrink-0" aria-hidden="true" />
             <span>Facebook</span>
           </a>
         </div>
@@ -218,12 +218,12 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
         <button
           type="button"
           onClick={handleCopyLink}
-          className="mt-3 flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[#2a2a33] bg-[#0d0d12] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+          className="mt-3 flex w-full min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
         >
           {copied ? (
             <>
-              <Check className="h-4 w-4 text-emerald-400 shrink-0" aria-hidden="true" />
-              <span className="text-emerald-400">Link copied</span>
+              <Check className="h-4 w-4 text-[#f2a33a] shrink-0" aria-hidden="true" />
+              <span className="text-[#f2a33a] font-bold">Link copied</span>
             </>
           ) : (
             <>
@@ -234,7 +234,7 @@ export function ShareSheet({ target, onClose }: ShareSheetProps) {
         </button>
 
         {statusNote && (
-          <p className="mt-2 text-center text-xs text-emerald-400" role="status">
+          <p className="mt-2 text-center text-xs text-[#f2a33a]" role="status">
             {statusNote}
           </p>
         )}

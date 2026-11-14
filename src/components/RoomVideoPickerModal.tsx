@@ -228,9 +228,9 @@ export function RoomVideoPickerModal({
     return (
       <div
         key={`${movie.source}-${movie.videoId}`}
-        className="flex flex-col rounded-xl border border-[#2a2a33] bg-[#0d0d12] p-2.5"
+        className="flex flex-col rounded-2xl border border-[#3a322a] bg-[#14110f] p-2.5"
       >
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#181820]">
+        <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#1e1a16]">
           {movie.thumbnail ? (
             <img
               src={movie.thumbnail}
@@ -240,28 +240,25 @@ export function RoomVideoPickerModal({
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              <Film className="h-6 w-6 text-[#E50914]" aria-hidden="true" />
+              <Film className="h-6 w-6 text-[#f2a33a]" aria-hidden="true" />
             </div>
-          )}
-          {movie.source === 'archive' && (
-            <span className="absolute left-2 top-2 rounded-md border border-[#2a2a33] bg-[#14141a] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-100">
-              Archive
-            </span>
           )}
         </div>
 
-        <h3 className="mt-2 font-display text-xs sm:text-sm font-semibold text-white line-clamp-2 leading-snug">
+        <h3 className="mt-2 text-xs sm:text-sm font-bold text-[#f4ece1] line-clamp-2 leading-snug">
           {movie.title}
         </h3>
-        <p className="mt-0.5 text-[11px] text-zinc-400 truncate">{subtitle}</p>
+        <p className="mt-0.5 text-[11px] text-[#b9aa98] truncate">
+          {movie.source === 'archive' ? `Archive · ${subtitle}` : subtitle}
+        </p>
 
-        <div className="mt-auto pt-2.5 flex items-center gap-1.5">
+        <div className="mt-auto pt-2.5 flex flex-wrap items-center gap-1.5">
           {canChangeVideo && (
             <button
               type="button"
               disabled={Boolean(busyKey)}
               onClick={() => void resolveAndRun('play', movie)}
-              className="inline-flex min-h-[36px] flex-1 items-center justify-center gap-1 rounded-lg bg-[#E50914] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-full bg-[#f2a33a] px-3 py-1.5 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
             >
               <Play className="h-3.5 w-3.5 fill-current shrink-0" aria-hidden="true" />
               <span>{playBusy ? 'Loading...' : 'Play now'}</span>
@@ -272,16 +269,16 @@ export function RoomVideoPickerModal({
             type="button"
             disabled={Boolean(busyKey) || isQueueFull}
             onClick={() => void resolveAndRun('queue', movie)}
-            className="inline-flex min-h-[36px] flex-1 items-center justify-center gap-1 rounded-lg border border-[#2a2a33] bg-[#181820] px-2.5 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#252530] disabled:opacity-50 cursor-pointer"
+            className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-3 py-1.5 text-xs font-medium text-[#f4ece1] whitespace-nowrap transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
           >
             {inQueue ? (
               <>
-                <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" aria-hidden="true" />
+                <Check className="h-3.5 w-3.5 text-[#f2a33a] shrink-0" aria-hidden="true" />
                 <span>Add again</span>
               </>
             ) : (
               <>
-                <Plus className="h-3.5 w-3.5 text-[#E50914] shrink-0" aria-hidden="true" />
+                <Plus className="h-3.5 w-3.5 text-[#f2a33a] shrink-0" aria-hidden="true" />
                 <span>{queueBusy ? 'Adding...' : 'Add to queue'}</span>
               </>
             )}
@@ -295,7 +292,7 @@ export function RoomVideoPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#14110f]/90 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="room-picker-title"
@@ -303,17 +300,17 @@ export function RoomVideoPickerModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-[#2a2a33] bg-[#14141a] sm:rounded-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-[20px] border border-[#3a322a] bg-[#1e1a16] sm:rounded-[20px]">
         {/* Header */}
-        <div className="flex items-center justify-between gap-3 border-b border-[#2a2a33] px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-[#3a322a] px-5 py-4">
           <div>
             <h2
               id="room-picker-title"
-              className="font-display text-lg font-semibold text-white"
+              className="text-lg font-bold text-[#f4ece1]"
             >
               Change Video or Add to Queue
             </h2>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-[#b9aa98]">
               Pick from YouTube, Internet Archive, or paste any YouTube link ({safeQueue.length}/
               {QUEUE_MAX_ITEMS} queued)
             </p>
@@ -322,19 +319,19 @@ export function RoomVideoPickerModal({
             type="button"
             onClick={onClose}
             aria-label="Close video picker"
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 cursor-pointer"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-[#b9aa98] transition-colors hover:bg-[#2a241e] hover:text-[#f4ece1] active:bg-[#3a322a] cursor-pointer"
           >
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
 
         {/* Search & Paste Controls */}
-        <div className="border-b border-[#2a2a33] bg-[#101015] px-5 py-3.5 space-y-2.5">
+        <div className="border-b border-[#3a322a] bg-[#14110f] px-5 py-3.5 space-y-2.5">
           {hasYouTubeApiKey && (
             <form onSubmit={handleSearch} className="flex items-center gap-2">
               <div className="relative flex-1">
                 <Search
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                  className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
                   aria-hidden="true"
                 />
                 <input
@@ -343,7 +340,7 @@ export function RoomVideoPickerModal({
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Search movies on YouTube..."
                   aria-label="Search movies for room"
-                  className="w-full min-h-[42px] rounded-lg border border-[#2a2a33] bg-[#08080A] pl-9 pr-8 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none"
+                  className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
                 />
                 {(searchInput || activeSearchQuery) && (
                   <button
@@ -354,16 +351,16 @@ export function RoomVideoPickerModal({
                       setSearchResults([]);
                     }}
                     aria-label="Clear room search"
-                    className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-zinc-400 hover:text-white cursor-pointer"
+                    className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] cursor-pointer"
                   >
-                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    <X className="h-4 w-4" aria-hidden="true" />
                   </button>
                 )}
               </div>
               <button
                 type="submit"
                 disabled={!searchInput.trim() || searching}
-                className="min-h-[42px] rounded-lg bg-[#E50914] px-4 py-2 text-xs font-semibold text-white whitespace-nowrap hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
+                className="min-h-[44px] rounded-full bg-[#f2a33a] px-5 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
               >
                 {searching ? 'Searching...' : 'Search'}
               </button>
@@ -374,7 +371,7 @@ export function RoomVideoPickerModal({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Link2
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#E50914]"
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#f2a33a]"
                 aria-hidden="true"
               />
               <input
@@ -383,7 +380,7 @@ export function RoomVideoPickerModal({
                 onChange={(e) => setPasteInput(e.target.value)}
                 placeholder="Or paste a YouTube link (youtube.com/watch or youtu.be)..."
                 aria-label="Paste YouTube link"
-                className="w-full min-h-[40px] rounded-lg border border-[#2a2a33] bg-[#08080A] pl-9 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none"
+                className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-4 py-2 text-xs text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
               />
             </div>
 
@@ -401,7 +398,7 @@ export function RoomVideoPickerModal({
                         source: 'youtube',
                       })
                     }
-                    className="min-h-[40px] rounded-lg bg-[#E50914] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                    className="min-h-[44px] rounded-full bg-[#f2a33a] px-4 py-2 text-xs font-bold text-[#1a1208] hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
                   >
                     Play link
                   </button>
@@ -417,7 +414,7 @@ export function RoomVideoPickerModal({
                       source: 'youtube',
                     })
                   }
-                  className="min-h-[40px] rounded-lg border border-[#2a2a33] bg-[#181820] px-3 py-1.5 text-xs font-medium text-white hover:border-white/30 active:bg-[#252530] disabled:opacity-50 cursor-pointer"
+                  className="min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-xs font-medium text-[#f4ece1] hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
                 >
                   Add link to queue
                 </button>
@@ -428,9 +425,7 @@ export function RoomVideoPickerModal({
           {feedback && (
             <p
               role="status"
-              className={`text-xs font-medium ${
-                feedback.tone === 'error' ? 'text-[#F87171]' : 'text-emerald-400'
-              }`}
+              className="text-xs font-medium text-[#f2a33a]"
             >
               {feedback.text}
             </p>
@@ -439,7 +434,7 @@ export function RoomVideoPickerModal({
 
         {/* Genre row tabs */}
         {!activeSearchQuery && (
-          <div className="flex gap-2 overflow-x-auto border-b border-[#2a2a33] px-5 py-2.5 no-scrollbar">
+          <div className="flex gap-2 overflow-x-auto border-b border-[#3a322a] px-5 py-2.5 no-scrollbar">
             {PICKER_TABS.map((tab) => {
               const selected = tab.slug === activeSlug;
               return (
@@ -447,10 +442,10 @@ export function RoomVideoPickerModal({
                   key={tab.slug}
                   type="button"
                   onClick={() => setActiveSlug(tab.slug)}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                  className={`shrink-0 min-h-[44px] rounded-full px-4 py-2 text-xs transition-colors cursor-pointer ${
                     selected
-                      ? 'bg-[#E50914] text-white font-semibold'
-                      : 'border border-[#2a2a33] bg-[#0d0d12] text-zinc-300 hover:border-white/30 hover:text-white'
+                      ? 'bg-[#f2a33a] text-[#1a1208] font-bold'
+                      : 'border border-[#3a322a] bg-[#14110f] text-[#b9aa98] font-medium hover:border-[#f2a33a] hover:text-[#f4ece1]'
                   }`}
                 >
                   {tab.name}
@@ -464,9 +459,9 @@ export function RoomVideoPickerModal({
         <div className="flex-1 overflow-y-auto p-5">
           {activeSearchQuery ? (
             searching ? (
-              <p className="text-sm text-zinc-400">Searching YouTube...</p>
+              <p className="text-sm text-[#b9aa98]">Searching YouTube...</p>
             ) : searchResults.length === 0 ? (
-              <p className="text-sm text-zinc-400">
+              <p className="text-sm text-[#b9aa98]">
                 No embeddable movies found for &ldquo;{activeSearchQuery}&rdquo;. Try another
                 search or paste a YouTube link above.
               </p>
@@ -487,7 +482,7 @@ export function RoomVideoPickerModal({
             )
           ) : currentTab.kind === 'library' ? (
             safeLibrary.length === 0 ? (
-              <p className="text-sm text-zinc-400">No saved videos in your shared library yet.</p>
+              <p className="text-sm text-[#b9aa98]">No saved videos in your shared library yet.</p>
             ) : (
               <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
                 {safeLibrary.map((item) =>
@@ -504,10 +499,10 @@ export function RoomVideoPickerModal({
               </div>
             )
           ) : tabLoading ? (
-            <p className="text-sm text-zinc-400">Loading movies...</p>
+            <p className="text-sm text-[#b9aa98]">Loading movies...</p>
           ) : currentTab.kind === 'youtube-genre' ? (
             (youtubeBySlug[currentTab.slug]?.length ?? 0) === 0 ? (
-              <p className="text-sm text-zinc-400">
+              <p className="text-sm text-[#b9aa98]">
                 No YouTube videos loaded for this row right now. Try an Archive tab or paste a link
                 above.
               </p>
@@ -527,7 +522,7 @@ export function RoomVideoPickerModal({
               </div>
             )
           ) : (archiveBySlug[currentTab.slug]?.length ?? 0) === 0 ? (
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-[#b9aa98]">
               No Archive movies loaded for this category right now.
             </p>
           ) : (

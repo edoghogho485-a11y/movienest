@@ -202,71 +202,58 @@ export async function generateShareImageFile(params: {
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  // 1. Red-black cinematic gradient background
-  const bgGradient = ctx.createLinearGradient(0, 0, width, height);
-  bgGradient.addColorStop(0, '#2a0508');
-  bgGradient.addColorStop(0.38, '#0b0b0f');
-  bgGradient.addColorStop(1, '#08080A');
-  ctx.fillStyle = bgGradient;
+  // 1. Flat cozy night background
+  ctx.fillStyle = '#14110f';
   ctx.fillRect(0, 0, width, height);
 
-  // Subtle top crimson spotlight gradient (purely drawn, no external images)
-  const glow = ctx.createRadialGradient(width / 2, 340, 40, width / 2, 340, 680);
-  glow.addColorStop(0, 'rgba(229, 9, 20, 0.36)');
-  glow.addColorStop(1, 'rgba(229, 9, 20, 0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, width, height);
-
-  // Outer card frame
+  // Outer panel card
   fillRoundedRect(ctx, 72, 110, width - 144, height - 220, 44);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+  ctx.fillStyle = '#1e1a16';
+  ctx.fill();
+  ctx.strokeStyle = '#3a322a';
   ctx.lineWidth = 3;
   ctx.stroke();
 
-  // Top accent bar inside frame
+  // Top amber accent bar inside frame
   fillRoundedRect(ctx, 130, 180, 110, 10, 5);
-  ctx.fillStyle = '#E50914';
+  ctx.fillStyle = '#f2a33a';
   ctx.fill();
 
-  // 2. MovieNest logo mark + wordmark
-  fillRoundedRect(ctx, 130, 240, 76, 76, 18);
-  ctx.fillStyle = '#E50914';
-  ctx.fill();
-
-  // Play triangle inside logo badge
+  // 2. Two play triangles (amber + cream, slightly offset) + MovieNest wordmark
   ctx.beginPath();
-  ctx.moveTo(157, 260);
-  ctx.lineTo(157, 296);
-  ctx.lineTo(188, 278);
+  ctx.moveTo(132, 246);
+  ctx.lineTo(132, 304);
+  ctx.lineTo(182, 275);
   ctx.closePath();
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = '#f2a33a';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(164, 256);
+  ctx.lineTo(164, 314);
+  ctx.lineTo(214, 285);
+  ctx.closePath();
+  ctx.fillStyle = '#f4ece1';
   ctx.fill();
 
   ctx.textBaseline = 'middle';
-  ctx.font = '700 62px "Outfit", system-ui, -apple-system, sans-serif';
-  const movieText = 'Movie';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText(movieText, 228, 280);
-  const movieWidth = ctx.measureText(movieText).width;
-  ctx.fillStyle = '#E50914';
-  ctx.fillText('Nest', 228 + movieWidth, 280);
+  ctx.font = '700 62px "Space Grotesk", system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = '#f4ece1';
+  ctx.fillText('MovieNest', 238, 282);
 
-  // 3. "Join my watch party" eyebrow badge
+  // 3. "Join my watch party" eyebrow pill
   ctx.textBaseline = 'alphabetic';
   fillRoundedRect(ctx, 130, 520, 420, 68, 34);
-  ctx.fillStyle = 'rgba(229, 9, 20, 0.18)';
+  ctx.fillStyle = '#f2a33a';
   ctx.fill();
-  ctx.strokeStyle = 'rgba(229, 9, 20, 0.55)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
 
-  ctx.font = '600 30px "DM Sans", system-ui, -apple-system, sans-serif';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText('JOIN MY WATCH PARTY', 168, 565);
+  ctx.font = '700 28px "Space Grotesk", system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = '#1a1208';
+  ctx.fillText('JOIN MY WATCH PARTY', 172, 564);
 
   // 4. Video title wrapped over up to 3 lines
-  ctx.font = '700 74px "Outfit", system-ui, -apple-system, sans-serif';
-  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '700 72px "Space Grotesk", system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = '#f4ece1';
   const titleLines = wrapCanvasLines(ctx, params.title, width - 260, 3);
   const startY = 720;
   const lineHeight = 96;
@@ -276,43 +263,43 @@ export async function generateShareImageFile(params: {
 
   // Subtitle line
   const afterTitleY = startY + titleLines.length * lineHeight + 56;
-  ctx.font = '400 36px "DM Sans", system-ui, -apple-system, sans-serif';
-  ctx.fillStyle = '#B3B3C0';
+  ctx.font = '400 36px "Space Grotesk", system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = '#b9aa98';
   ctx.fillText('Synced playback & live chat on any device', 130, afterTitleY);
 
   // 5. Room code panel (shown when sharing a room)
   if (params.roomCode) {
     const boxY = 1220;
     fillRoundedRect(ctx, 130, boxY, width - 260, 260, 32);
-    ctx.fillStyle = '#14141A';
+    ctx.fillStyle = '#14110f';
     ctx.fill();
-    ctx.strokeStyle = '#E50914';
+    ctx.strokeStyle = '#f2a33a';
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    ctx.font = '600 28px "DM Sans", system-ui, -apple-system, sans-serif';
-    ctx.fillStyle = '#A1A1AA';
+    ctx.font = '500 28px "Space Grotesk", system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = '#b9aa98';
     ctx.fillText('ROOM CODE', 180, boxY + 82);
 
-    ctx.font = '700 84px "JetBrains Mono", monospace';
-    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '700 84px ui-monospace, monospace';
+    ctx.fillStyle = '#f4ece1';
     ctx.fillText(params.roomCode, 180, boxY + 190);
   }
 
   // Bottom footer bar
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.strokeStyle = '#3a322a';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(130, 1630);
   ctx.lineTo(width - 130, 1630);
   ctx.stroke();
 
-  ctx.font = '600 32px "DM Sans", system-ui, -apple-system, sans-serif';
-  ctx.fillStyle = '#E50914';
+  ctx.font = '700 32px "Space Grotesk", system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = '#f2a33a';
   ctx.fillText('Join my watch party', 130, 1710);
 
-  ctx.font = '400 28px "DM Sans", system-ui, -apple-system, sans-serif';
-  ctx.fillStyle = '#A1A1AA';
+  ctx.font = '400 28px "Space Grotesk", system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = '#b9aa98';
   ctx.fillText('Tap the link to watch together on MovieNest', 130, 1762);
 
   const blob = await new Promise<Blob | null>((resolve) => {

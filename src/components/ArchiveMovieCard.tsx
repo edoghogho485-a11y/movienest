@@ -22,14 +22,14 @@ export function ArchiveMovieCard({
 
   return (
     <article
-      className={`flex flex-col rounded-xl border border-[#2a2a33] bg-[#14141a] p-2.5 transition-colors hover:border-[#E50914] ${className}`}
+      className={`flex flex-col rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3 transition-colors hover:border-[#f2a33a] ${className}`}
     >
       <button
         type="button"
         onClick={() => onWatch(movie)}
-        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-80 rounded-lg cursor-pointer"
+        className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] active:opacity-80 rounded-xl cursor-pointer"
       >
-        <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#1b1b24]">
+        <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#14110f]">
           {!imgError ? (
             <img
               src={movie.thumbnail}
@@ -39,29 +39,23 @@ export function ArchiveMovieCard({
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#14141a] p-3">
-              <Film className="h-6 w-6 text-[#E50914]/85" aria-hidden="true" />
-              <span className="text-xs text-zinc-200 text-center line-clamp-1">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-[#14110f] p-3">
+              <Film className="h-6 w-6 text-[#f2a33a]" aria-hidden="true" />
+              <span className="text-xs text-[#f4ece1] text-center line-clamp-1">
                 {movie.title}
               </span>
             </div>
           )}
 
-          <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent"
-            aria-hidden="true"
-          />
-
-          {/* Small Archive source badge */}
-          <span className="absolute left-2 top-2 rounded-md border border-[#2a2a33] bg-[#14141a] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-100">
+          <span className="absolute left-2 top-2 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
             Archive
           </span>
         </div>
 
-        <h3 className="mt-2.5 font-display text-sm font-semibold text-white line-clamp-2 leading-snug group-hover:text-[#E50914] transition-colors">
+        <h3 className="mt-2.5 text-sm font-bold text-[#f4ece1] line-clamp-2 leading-snug group-hover:text-[#f2a33a] transition-colors">
           {movie.title}
         </h3>
-        <p className="mt-1 text-xs text-zinc-400 truncate">
+        <p className="mt-1 text-xs text-[#b9aa98] truncate">
           {movie.year ? `${movie.year} · Internet Archive` : 'Internet Archive'}
         </p>
       </button>
@@ -70,10 +64,10 @@ export function ArchiveMovieCard({
         <button
           type="button"
           onClick={() => onCreateRoom(movie)}
-          className="inline-flex min-h-[38px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-2.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+          className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-3 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
         >
           <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span>Create Room</span>
+          <span>Room</span>
         </button>
 
         <BookmarkButton
@@ -87,9 +81,9 @@ export function ArchiveMovieCard({
           type="button"
           onClick={() => onShare(movie)}
           aria-label={`Share ${movie.title}`}
-          className="inline-flex min-h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border border-white/15 bg-[#181820] text-zinc-200 transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+          className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
         >
-          <Share2 className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+          <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
         </button>
       </div>
     </article>

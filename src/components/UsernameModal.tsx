@@ -150,7 +150,7 @@ export function UsernameModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#14110f]/90 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="username-modal-title"
@@ -158,15 +158,15 @@ export function UsernameModal({
         if (dismissible && e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-t-2xl border border-[#2a2a33] bg-[#14141a] p-5 shadow-2xl sm:rounded-2xl sm:p-6">
-        <div className="flex items-center justify-between gap-3 border-b border-[#2a2a33] pb-3.5">
+      <div className="w-full max-w-md rounded-t-[20px] border border-[#3a322a] bg-[#1e1a16] p-5 sm:rounded-[20px] sm:p-6">
+        <div className="flex items-center justify-between gap-3 border-b border-[#3a322a] pb-3.5">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#20202a] text-[#E50914]">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f2a33a]">
               <AtSign className="h-4 w-4" aria-hidden="true" />
             </span>
             <h2
               id="username-modal-title"
-              className="font-display text-lg font-semibold text-white"
+              className="text-lg font-bold text-[#f4ece1]"
             >
               {isChangeMode ? 'Change username' : 'Choose your username'}
             </h2>
@@ -177,20 +177,20 @@ export function UsernameModal({
               type="button"
               onClick={onClose}
               aria-label="Close username prompt"
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/10 hover:text-white active:bg-white/20 cursor-pointer"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-[#b9aa98] transition-colors hover:bg-[#2a241e] hover:text-[#f4ece1] active:bg-[#3a322a] cursor-pointer"
             >
               <X className="h-5 w-5" aria-hidden="true" />
             </button>
           )}
         </div>
 
-        {/* Amber warning notice */}
-        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5">
+        {/* Amber notice */}
+        <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-[#f2a33a]/40 bg-[#14110f] p-3.5">
           <AlertTriangle
-            className="mt-0.5 h-4 w-4 shrink-0 text-amber-400"
+            className="mt-0.5 h-4 w-4 shrink-0 text-[#f2a33a]"
             aria-hidden="true"
           />
-          <p className="text-xs leading-relaxed text-amber-200">
+          <p className="text-xs leading-relaxed text-[#f4ece1]">
             {isChangeMode
               ? 'You can change your username only once. This is your one and only change.'
               : 'Usernames are unique. You can only change your username once, so choose carefully.'}
@@ -201,14 +201,14 @@ export function UsernameModal({
           <div>
             <label
               htmlFor="username-input"
-              className="block text-sm font-medium text-zinc-200"
+              className="block text-sm font-medium text-[#f4ece1]"
             >
               {isChangeMode ? 'New username' : 'Username'}
             </label>
 
             <div className="relative mt-1.5">
               <AtSign
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
                 aria-hidden="true"
               />
               <input
@@ -225,54 +225,54 @@ export function UsernameModal({
                   if (errorMsg) setErrorMsg('');
                 }}
                 placeholder="e.g. movie_fan99"
-                className="w-full min-h-[44px] rounded-lg border border-white/15 bg-[#08080A] pl-9 pr-3.5 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
+                className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#14110f] pl-10 pr-4 py-2.5 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
               />
             </div>
 
             <div className="mt-2 min-h-[20px] flex items-center justify-between gap-2 text-xs">
               {!trimmed ? (
-                <span className="text-zinc-400">
+                <span className="text-[#b9aa98]">
                   {USERNAME_MIN_LENGTH} to {USERNAME_MAX_LENGTH} characters: letters, numbers, and
                   underscores only.
                 </span>
               ) : isSameAsCurrent ? (
-                <span className="text-zinc-400">
+                <span className="text-[#b9aa98]">
                   This is already your current username.
                 </span>
               ) : !formatValid ? (
-                <span className="text-[#F87171]">
+                <span className="text-[#f2a33a]">
                   Use {USERNAME_MIN_LENGTH}–{USERNAME_MAX_LENGTH} letters, numbers, or underscores
                   only.
                 </span>
               ) : availability === 'checking' ? (
-                <span className="inline-flex items-center gap-1.5 text-zinc-400">
+                <span className="inline-flex items-center gap-1.5 text-[#b9aa98]">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                   <span>Checking availability...</span>
                 </span>
               ) : availability === 'available' ? (
-                <span className="inline-flex items-center gap-1 font-medium text-emerald-400">
+                <span className="inline-flex items-center gap-1 font-bold text-[#f2a33a]">
                   <Check className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Available</span>
                 </span>
               ) : availability === 'taken' ? (
-                <span className="font-medium text-[#F87171]">Already taken</span>
+                <span className="font-bold text-[#f2a33a]">Already taken</span>
               ) : (
-                <span className="text-zinc-400">Looks good</span>
+                <span className="text-[#b9aa98]">Looks good</span>
               )}
             </div>
           </div>
 
           {confirmStep && isChangeMode && (
-            <div className="rounded-xl border border-[#2a2a33] bg-[#0d0d12] p-3.5 text-xs text-zinc-200">
+            <div className="rounded-2xl border border-[#3a322a] bg-[#14110f] p-3.5 text-xs text-[#b9aa98]">
               Change your username from{' '}
-              <span className="font-semibold text-white">@{currentUsername}</span> to{' '}
-              <span className="font-semibold text-[#E50914]">@{trimmed}</span>? You will not be
+              <span className="font-bold text-[#f4ece1]">@{currentUsername}</span> to{' '}
+              <span className="font-bold text-[#f2a33a]">@{trimmed}</span>? You will not be
               able to change it again.
             </div>
           )}
 
           {errorMsg && (
-            <p className="text-xs text-[#F87171]" role="alert">
+            <p className="text-xs font-medium text-[#f2a33a]" role="alert">
               {errorMsg}
             </p>
           )}
@@ -283,7 +283,7 @@ export function UsernameModal({
                 type="button"
                 disabled={submitting}
                 onClick={() => setConfirmStep(false)}
-                className="min-h-[44px] rounded-lg border border-[#2a2a33] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5 active:bg-white/10 cursor-pointer"
+                className="min-h-[44px] rounded-full border border-[#3a322a] px-5 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
               >
                 Back
               </button>
@@ -292,7 +292,7 @@ export function UsernameModal({
                 type="button"
                 disabled={submitting}
                 onClick={onClose}
-                className="min-h-[44px] rounded-lg border border-[#2a2a33] px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-white/5 active:bg-white/10 cursor-pointer"
+                className="min-h-[44px] rounded-full border border-[#3a322a] px-5 py-2.5 text-sm font-medium text-[#b9aa98] transition-colors hover:border-[#f2a33a] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
               >
                 Cancel
               </button>
@@ -307,7 +307,7 @@ export function UsernameModal({
                 availability === 'taken' ||
                 isSameAsCurrent
               }
-              className="min-h-[44px] rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
+              className="min-h-[44px] rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
             >
               {submitting
                 ? 'Saving...'

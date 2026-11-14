@@ -27,17 +27,17 @@ export function RoomQueuePanel({
   return (
     <section
       aria-label="Up Next queue"
-      className={`flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#111116] ${
+      className={`flex flex-col overflow-hidden rounded-[20px] border border-[#3a322a] bg-[#1e1a16] ${
         inMobileTab ? 'h-[380px]' : ''
       }`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-[#3a322a] px-4 py-3">
         <div className="flex items-center gap-2">
-          <ListVideo className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
-          <h2 className="font-display text-sm font-semibold text-white">
+          <ListVideo className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+          <h2 className="text-sm font-bold text-[#f4ece1]">
             Up Next
           </h2>
-          <span className="font-mono text-xs text-zinc-400 tabular-nums">
+          <span className="font-mono text-xs text-[#b9aa98] tabular-nums">
             {safeQueue.length}/{QUEUE_MAX_ITEMS}
           </span>
         </div>
@@ -46,9 +46,9 @@ export function RoomQueuePanel({
           <button
             type="button"
             onClick={onOpenPicker}
-            className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-[#2a2a33] bg-[#181820] px-2.5 py-1 text-xs font-medium text-white transition-colors hover:border-[#E50914] active:bg-[#252530] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-3.5 py-1.5 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
           >
-            <Plus className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+            <Plus className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
             <span>Add movie</span>
           </button>
         )}
@@ -60,14 +60,14 @@ export function RoomQueuePanel({
             inMobileTab ? 'flex-1' : ''
           }`}
         >
-          <p className="text-xs text-zinc-400">
+          <p className="text-xs text-[#b9aa98]">
             No movies queued up yet. When the current video finishes, the next queued movie plays
             automatically.
           </p>
         </div>
       ) : (
         <ul
-          className={`divide-y divide-white/5 overflow-y-auto px-3 py-1.5 ${
+          className={`divide-y divide-[#3a322a]/60 overflow-y-auto px-3 py-1.5 ${
             inMobileTab ? 'flex-1' : 'max-h-72'
           }`}
         >
@@ -78,11 +78,11 @@ export function RoomQueuePanel({
                 key={item.id}
                 className="flex items-center gap-3 py-2.5 px-1"
               >
-                <span className="w-4 shrink-0 text-center font-mono text-xs text-zinc-500 tabular-nums">
+                <span className="w-4 shrink-0 text-center font-mono text-xs text-[#b9aa98] tabular-nums">
                   {index + 1}
                 </span>
 
-                <div className="relative h-11 w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-[#181820]">
+                <div className="relative h-11 w-20 shrink-0 overflow-hidden rounded-xl border border-[#3a322a] bg-[#14110f]">
                   {item.thumbnail ? (
                     <img
                       src={item.thumbnail}
@@ -92,16 +92,16 @@ export function RoomQueuePanel({
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center">
-                      <Film className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
+                      <Film className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
                     </div>
                   )}
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-white">
+                  <p className="truncate text-sm font-medium text-[#f4ece1]">
                     {item.title}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-400 truncate">
+                  <p className="mt-0.5 text-[11px] text-[#b9aa98] truncate">
                     {item.source === 'archive' ? 'Internet Archive' : 'YouTube'}
                     {item.addedBy ? ` · Added by ${item.addedBy}` : ''}
                   </p>
@@ -115,9 +115,9 @@ export function RoomQueuePanel({
                       onClick={() => onPlayQueuedItem(item)}
                       aria-label={`Play ${item.title} now`}
                       title="Play now"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#181820] text-zinc-200 transition-colors hover:border-[#E50914] hover:text-white active:bg-[#252530] disabled:opacity-50 cursor-pointer"
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
                     >
-                      <Play className="h-3.5 w-3.5 fill-current text-[#E50914]" aria-hidden="true" />
+                      <Play className="h-4 w-4 fill-current text-[#f2a33a]" aria-hidden="true" />
                     </button>
                   )}
 
@@ -128,9 +128,9 @@ export function RoomQueuePanel({
                       onClick={() => onRemoveItem(item.id)}
                       aria-label={`Remove ${item.title} from queue`}
                       title="Remove from queue"
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#181820] text-zinc-400 transition-colors hover:border-[#F87171]/60 hover:text-[#F87171] active:bg-[#252530] disabled:opacity-50 cursor-pointer"
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#b9aa98] transition-colors hover:border-[#f2a33a] hover:text-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
                     >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </button>
                   )}
                 </div>

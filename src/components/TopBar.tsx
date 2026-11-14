@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   AtSign,
   ChevronDown,
-  Clapperboard,
   Plus,
   Search,
   User,
@@ -11,6 +10,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../lib/supabase';
 import { hasYouTubeApiKey } from '../lib/youtube';
+import { MovieNestLogo } from './MovieNestLogo';
 
 interface TopBarProps {
   searchQuery: string;
@@ -86,31 +86,27 @@ export function TopBar({
   const hasUsedChange = (userProfile?.changes ?? 0) >= 1;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[#2a2a33] bg-[#0A0A0E]">
-      <div className="flex h-14 lg:h-16 items-center justify-between gap-2 px-3 sm:px-6 lg:px-8">
-        {/* Phone logo (hidden on laptop because Sidebar renders the brand) */}
+    <header className="sticky top-0 z-30 border-b border-[#3a322a] bg-[#14110f]">
+      <div className="flex h-16 items-center justify-between gap-2 px-3 sm:px-6 lg:px-8">
+        {/* Brand logo (always visible in TopBar, compact sizing on 360px phones) */}
         <button
           type="button"
           onClick={onHomeClick}
-          className="flex items-center gap-1.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] active:opacity-75 lg:hidden cursor-pointer shrink-0"
+          aria-label="MovieNest home"
+          className="inline-flex min-h-[44px] items-center rounded-full px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] active:opacity-80 cursor-pointer shrink-0"
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#E50914]">
-            <Clapperboard className="h-3.5 w-3.5 text-white" aria-hidden="true" />
-          </div>
-          <span className="font-display text-base font-bold tracking-tight text-white whitespace-nowrap">
-            Movie<span className="text-[#E50914]">Nest</span>
-          </span>
+          <MovieNestLogo compact />
         </button>
 
-        {/* Desktop & tablet search bar (hidden when VITE_YOUTUBE_API_KEY is missing) */}
+        {/* Desktop & tablet search box (hidden on phones, expands via search icon button) */}
         {hasYouTubeApiKey ? (
           <form
             onSubmit={handleSubmit}
-            className="hidden md:flex flex-1 max-w-md items-center gap-2"
+            className="hidden md:flex flex-1 max-w-md items-center gap-2 mx-2"
           >
             <div className="relative flex-1">
               <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
                 aria-hidden="true"
               />
               <input
@@ -119,40 +115,40 @@ export function TopBar({
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Search full movies on YouTube..."
                 aria-label="Search full movies on YouTube"
-                className="w-full min-h-[40px] rounded-lg border border-white/10 bg-[#111116] pl-9 pr-8 py-1.5 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none focus:ring-1 focus:ring-[#E50914]"
+                className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
               />
               {(input || searchQuery) && (
                 <button
                   type="button"
                   onClick={handleClear}
                   aria-label="Clear search"
-                  className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-zinc-400 hover:text-white active:bg-white/10 cursor-pointer"
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
                 >
-                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </button>
               )}
             </div>
             <button
               type="submit"
               disabled={!input.trim() || searching}
-              className="min-h-[40px] rounded-lg border border-white/15 bg-[#14141B] px-3.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:border-white/30 active:bg-[#252530] disabled:opacity-50 cursor-pointer"
+              className="min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-xs font-medium text-[#f4ece1] whitespace-nowrap shrink-0 transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
             >
               {searching ? 'Searching...' : 'Search'}
             </button>
           </form>
         ) : (
-          <div className="hidden lg:block flex-1" />
+          <div className="hidden md:block flex-1" />
         )}
 
-        {/* Right actions: mobile search toggle, Join / Create Room, and Profile Menu */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 ml-auto">
+        {/* Right actions: phone search toggle, Join room outline pill, Start a room amber pill, profile */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {hasYouTubeApiKey && (
             <button
               type="button"
               onClick={() => setMobileSearchOpen((prev) => !prev)}
               aria-label="Toggle movie search"
               aria-expanded={mobileSearchOpen}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#14141a] text-zinc-200 transition-colors hover:text-white active:bg-[#252530] md:hidden cursor-pointer"
+              className="flex h-11 w-11 min-h-[44px] items-center justify-center rounded-full border border-[#3a322a] bg-[#1e1a16] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] md:hidden cursor-pointer"
             >
               <Search className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -161,19 +157,21 @@ export function TopBar({
           <button
             type="button"
             onClick={onJoinRoom}
-            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#14141a] px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-medium text-white whitespace-nowrap shrink-0 transition-colors hover:border-white/30 hover:bg-[#1b1b24] active:bg-[#252530] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-[#f4ece1] whitespace-nowrap shrink-0 transition-colors hover:border-[#f2a33a] hover:bg-[#1e1a16] active:bg-[#2a241e] cursor-pointer"
           >
-            <Users className="h-3.5 w-3.5 text-zinc-300 hidden sm:block" aria-hidden="true" />
-            <span>Join Room</span>
+            <Users className="h-3.5 w-3.5 text-[#b9aa98] hidden sm:block" aria-hidden="true" />
+            <span className="sm:hidden">Join</span>
+            <span className="hidden sm:inline">Join room</span>
           </button>
 
           <button
             type="button"
             onClick={onCreateRoom}
-            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg bg-[#E50914] px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-3 sm:px-4 py-2 text-xs sm:text-sm font-bold text-[#1a1208] whitespace-nowrap shrink-0 transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
           >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            <span>Create Room</span>
+            <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="sm:hidden">Start</span>
+            <span className="hidden sm:inline">Start a room</span>
           </button>
 
           {/* Profile / Username Menu */}
@@ -186,23 +184,24 @@ export function TopBar({
                   aria-expanded={profileOpen}
                   aria-haspopup="menu"
                   aria-label={`Profile menu for @${userProfile.username}`}
-                  className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#14141a] px-2 sm:px-3 py-1.5 text-xs font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                  className="inline-flex h-11 min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-2 sm:px-3 py-1.5 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                 >
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#E50914] text-[11px] font-bold text-white">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f2a33a] text-[11px] font-bold text-[#1a1208]">
                     {initial}
                   </span>
-                  <span className="hidden sm:inline max-w-[110px] truncate text-zinc-100">
+                  <span className="hidden sm:inline max-w-[110px] truncate text-[#f4ece1]">
                     @{userProfile.username}
                   </span>
-                  <ChevronDown className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+                  <ChevronDown className="h-3.5 w-3.5 text-[#b9aa98] hidden sm:block" aria-hidden="true" />
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={onOpenClaimUsername}
-                  className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#14141a] px-2.5 sm:px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:border-[#E50914] hover:text-white active:bg-[#252530] cursor-pointer"
+                  aria-label="Set username"
+                  className="inline-flex h-11 min-h-[44px] items-center justify-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-2.5 sm:px-3.5 py-1.5 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                 >
-                  <User className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                  <User className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
                   <span className="hidden sm:inline">Set username</span>
                 </button>
               )}
@@ -211,15 +210,15 @@ export function TopBar({
                 <div
                   role="menu"
                   aria-label="Username profile menu"
-                  className="absolute right-0 mt-2 w-64 rounded-xl border border-[#2a2a33] bg-[#14141a] p-3.5 shadow-2xl z-40"
+                  className="absolute right-0 mt-2 w-64 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-4 z-40"
                 >
-                  <div className="flex items-center gap-2.5 border-b border-white/10 pb-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E50914] text-sm font-bold text-white">
+                  <div className="flex items-center gap-2.5 border-b border-[#3a322a] pb-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#f2a33a] text-sm font-bold text-[#1a1208]">
                       {initial}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-xs text-zinc-400">Signed in as</p>
-                      <p className="truncate font-mono text-sm font-semibold text-white">
+                      <p className="text-xs text-[#b9aa98]">Signed in as</p>
+                      <p className="truncate font-mono text-sm font-bold text-[#f4ece1]">
                         @{userProfile.username}
                       </p>
                     </div>
@@ -235,14 +234,14 @@ export function TopBar({
                         setProfileOpen(false);
                         onOpenChangeUsername();
                       }}
-                      className="flex w-full min-h-[40px] items-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-[#E50914] active:bg-[#252530] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                      className="flex w-full min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-3.5 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      <AtSign className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                      <AtSign className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
                       <span>Change username</span>
                     </button>
 
                     {hasUsedChange && (
-                      <p className="text-[11px] leading-snug text-zinc-400">
+                      <p className="text-[11px] leading-snug text-[#b9aa98]">
                         You&apos;ve already used your one username change
                       </p>
                     )}
@@ -258,7 +257,7 @@ export function TopBar({
       {hasYouTubeApiKey && mobileSearchOpen && (
         <form
           onSubmit={handleSubmit}
-          className="flex items-center gap-2 border-t border-[#2a2a33] bg-[#0A0A0E] px-4 py-2.5 md:hidden"
+          className="flex items-center gap-2 border-t border-[#3a322a] bg-[#14110f] px-3 py-2.5 md:hidden"
         >
           <input
             type="search"
@@ -267,14 +266,14 @@ export function TopBar({
             placeholder="Search full movies on YouTube..."
             aria-label="Search full movies on YouTube"
             autoFocus
-            className="min-w-0 flex-1 min-h-[40px] rounded-lg border border-[#2a2a33] bg-[#14141a] px-3 py-1.5 text-sm text-white placeholder:text-zinc-500 focus:border-[#E50914] focus:outline-none"
+            className="min-w-0 flex-1 min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
           />
           <button
             type="submit"
             disabled={!input.trim() || searching}
-            className="min-h-[40px] rounded-lg bg-[#E50914] px-3.5 py-1.5 text-xs font-semibold text-white whitespace-nowrap shrink-0 active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
+            className="min-h-[44px] rounded-full bg-[#f2a33a] px-4 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap shrink-0 active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
           >
-            {searching ? '...' : 'Go'}
+            {searching ? '...' : 'Search'}
           </button>
         </form>
       )}

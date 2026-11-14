@@ -1648,14 +1648,14 @@ export function RoomPage({
             saveRoomHistoryProgress(false);
             onBack();
           }}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2 -ml-2 text-sm font-medium text-zinc-300 transition-colors hover:text-[#E50914] active:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E50914] cursor-pointer"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] hover:text-[#f2a33a] active:bg-[#2a241e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] cursor-pointer"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>Back to MovieNest</span>
         </button>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-semibold tracking-wider text-[#E50914]">
+          <span className="font-mono text-sm font-bold tracking-wider text-[#f2a33a] px-1">
             {currentRoom.code}
           </span>
 
@@ -1663,9 +1663,9 @@ export function RoomPage({
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
-              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#14141a] px-3 py-2 text-sm font-medium text-white transition-colors hover:border-[#E50914] active:bg-[#252530] cursor-pointer"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
             >
-              <Settings className="h-4 w-4 text-[#E50914]" aria-hidden="true" />
+              <Settings className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
               <span>Room Settings</span>
             </button>
           )}
@@ -1682,11 +1682,11 @@ export function RoomPage({
           <button
             type="button"
             onClick={handleCopyInvite}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-[#2a2a33] bg-[#14141a] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
           >
             {copied ? (
               <>
-                <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                <Check className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
                 <span>Link Copied</span>
               </>
             ) : (
@@ -1700,7 +1700,7 @@ export function RoomPage({
           <button
             type="button"
             onClick={handleShareRoom}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-4 py-2 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
           >
             <Share2 className="h-4 w-4" aria-hidden="true" />
             <span>Share</span>
@@ -1710,25 +1710,25 @@ export function RoomPage({
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-[#f4ece1] sm:text-3xl">
               {currentRoom.name}
             </h1>
             {isHost && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-[#E50914]/50 bg-[#1b1013] px-2.5 py-0.5 text-xs font-semibold text-[#E50914]">
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-[#f2a33a]">
                 <Crown className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Host</span>
               </span>
             )}
             {isLocked && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-[#2a2a33] bg-[#14141a] px-2.5 py-0.5 text-xs font-medium text-zinc-200">
-                <Lock className="h-3 w-3 text-[#E50914]" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-[#b9aa98]">
+                <Lock className="h-3 w-3 text-[#f2a33a]" aria-hidden="true" />
                 <span>Locked</span>
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-zinc-400">
-            Now playing: <span className="text-zinc-200">{displayVideoTitle}</span>
+          <p className="mt-1 text-sm text-[#b9aa98]">
+            Now playing: <span className="text-[#f4ece1]">{displayVideoTitle}</span>
             <span className="mx-2" aria-hidden="true">
               ·
             </span>
@@ -1737,15 +1737,15 @@ export function RoomPage({
         </div>
 
         {/* Live Realtime sync & room presence indicator */}
-        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-zinc-300 pt-1">
+        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-[#f4ece1] pt-1">
           <span className="inline-flex items-center gap-1.5" aria-live="polite">
             <span
               className={`h-2 w-2 rounded-full ${
                 syncStatus === 'synced'
-                  ? 'bg-emerald-400'
+                  ? 'bg-[#f2a33a]'
                   : syncStatus === 'reconnecting'
-                    ? 'bg-[#E50914]'
-                    : 'bg-zinc-400'
+                    ? 'bg-[#b9aa98]'
+                    : 'bg-[#b9aa98]'
               }`}
               aria-hidden="true"
             />
@@ -1758,12 +1758,12 @@ export function RoomPage({
             </span>
           </span>
 
-          <span className="text-zinc-600" aria-hidden="true">
+          <span className="text-[#3a322a]" aria-hidden="true">
             ·
           </span>
 
-          <span className="inline-flex items-center gap-1.5 tabular-nums">
-            <Users className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+          <span className="inline-flex items-center gap-1.5 tabular-nums text-[#b9aa98]">
+            <Users className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
             <span>
               {peopleCount} {peopleCount === 1 ? 'person' : 'people'} in room
             </span>
@@ -1775,40 +1775,40 @@ export function RoomPage({
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
         <div className="lg:col-span-8 flex flex-col">
           {/* Responsive 16:9 Player + floating reactions, toasts, and 3-2-1 countdown overlay */}
-          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#111116] shadow-2xl">
+          <div className="relative overflow-hidden rounded-[20px] border border-[#3a322a] bg-[#1e1a16]">
             {joinChoicePending ? (
-              <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-black p-6 text-center">
-                <Film className="h-8 w-8 text-[#E50914]" aria-hidden="true" />
-                <p className="text-sm font-medium text-zinc-200">{displayVideoTitle}</p>
-                <p className="text-xs text-zinc-400">
+              <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-[#14110f] p-6 text-center">
+                <Film className="h-8 w-8 text-[#f2a33a]" aria-hidden="true" />
+                <p className="text-sm font-bold text-[#f4ece1]">{displayVideoTitle}</p>
+                <p className="text-xs text-[#b9aa98]">
                   Choose how you&apos;d like to start watching
                 </p>
               </div>
             ) : isArchive ? (
               archiveLoading ? (
-                <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-black p-6 text-center">
-                  <Film className="h-8 w-8 text-[#E50914] animate-pulse" aria-hidden="true" />
-                  <p className="text-sm font-medium text-zinc-200">
+                <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-[#14110f] p-6 text-center">
+                  <Film className="h-8 w-8 text-[#f2a33a] animate-pulse" aria-hidden="true" />
+                  <p className="text-sm font-medium text-[#f4ece1]">
                     Loading movie from Internet Archive...
                   </p>
                 </div>
               ) : archiveError || !archiveUrl ? (
-                <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#181820]">
-                    <Film className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
+                <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 bg-[#14110f] p-6 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#3a322a] bg-[#1e1a16]">
+                    <Film className="h-5 w-5 text-[#f2a33a]" aria-hidden="true" />
                   </div>
                   <div className="max-w-md space-y-1.5">
-                    <p className="font-display text-lg font-semibold text-white">
+                    <p className="text-lg font-bold text-[#f4ece1]">
                       This Archive movie couldn&apos;t load
                     </p>
-                    <p className="text-sm text-zinc-400">
+                    <p className="text-sm text-[#b9aa98]">
                       The MP4 stream may be unavailable or temporarily slow on Internet Archive.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={isHost ? () => setPickerOpen(true) : onBack}
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
                   >
                     <span>{isHost ? 'Pick another movie' : 'Back to MovieNest'}</span>
                   </button>
@@ -1909,19 +1909,19 @@ export function RoomPage({
                     }
                   }}
                   onError={() => setArchiveError(true)}
-                  className="aspect-video w-full bg-black"
+                  className="aspect-video w-full bg-[#14110f]"
                 />
               )
             ) : embedBlocked ? (
-              <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 p-6 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-[#181820]">
-                  <Lock className="h-5 w-5 text-[#E50914]" aria-hidden="true" />
+              <div className="flex aspect-video w-full flex-col items-center justify-center gap-4 bg-[#14110f] p-6 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#3a322a] bg-[#1e1a16]">
+                  <Lock className="h-5 w-5 text-[#f2a33a]" aria-hidden="true" />
                 </div>
                 <div className="max-w-md space-y-1.5">
-                  <p className="font-display text-lg font-semibold text-white">
+                  <p className="text-lg font-bold text-[#f4ece1]">
                     This video&apos;s owner blocks embedding
                   </p>
-                  <p className="text-sm text-zinc-400">
+                  <p className="text-sm text-[#b9aa98]">
                     YouTube doesn&apos;t allow this video to play inside external apps. You can
                     open it directly on YouTube or switch to another movie.
                   </p>
@@ -1931,7 +1931,7 @@ export function RoomPage({
                     href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[#E50914] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710]"
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f]"
                   >
                     <span>Open on YouTube</span>
                     <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -1940,7 +1940,7 @@ export function RoomPage({
                     <button
                       type="button"
                       onClick={() => setPickerOpen(true)}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-[#2a2a33] bg-[#181820] px-4 py-2.5 text-sm font-medium text-white hover:border-white/30 cursor-pointer"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-5 py-2.5 text-sm font-medium text-[#f4ece1] hover:border-[#f2a33a] cursor-pointer"
                     >
                       <span>Change video</span>
                     </button>
@@ -1948,7 +1948,7 @@ export function RoomPage({
                 </div>
               </div>
             ) : (
-              <div ref={playerMountRef} className="relative aspect-video w-full bg-black" />
+              <div ref={playerMountRef} className="relative aspect-video w-full bg-[#14110f]" />
             )}
 
             {/* Activity & presence toast notices */}
@@ -1960,7 +1960,7 @@ export function RoomPage({
                 {toasts.map((toast) => (
                   <div
                     key={toast.id}
-                    className="rounded-lg border border-white/15 bg-black/80 px-3 py-1.5 text-xs font-medium text-white shadow"
+                    className="rounded-xl border border-[#3a322a] bg-[#14110f]/95 px-3 py-1.5 text-xs font-medium text-[#f4ece1]"
                   >
                     {toast.text}
                   </div>
@@ -1972,12 +1972,12 @@ export function RoomPage({
             {countdownValue !== null && (
               <div
                 aria-live="assertive"
-                className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70"
+                className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center bg-[#14110f]/85"
               >
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-300">
+                <p className="text-xs font-bold uppercase tracking-widest text-[#f4ece1]">
                   Starting together in
                 </p>
-                <span className="mt-1 font-display text-7xl sm:text-8xl font-extrabold text-[#E50914] tabular-nums">
+                <span className="mt-1 text-7xl sm:text-8xl font-bold text-[#f2a33a] tabular-nums">
                   {countdownValue}
                 </span>
               </div>
@@ -1999,7 +1999,7 @@ export function RoomPage({
                       {reaction.emoji}
                     </span>
                     {reaction.sender && (
-                      <span className="mt-0.5 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-medium text-zinc-200">
+                      <span className="mt-0.5 rounded bg-[#14110f]/90 px-1.5 py-0.5 text-[10px] font-medium text-[#f4ece1]">
                         {reaction.sender}
                       </span>
                     )}
@@ -2011,14 +2011,14 @@ export function RoomPage({
             {!isHost && ownPace && !joinChoicePending && (
               <div
                 role="status"
-                className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#181820] px-4 py-2.5 text-xs text-zinc-200"
+                className="flex flex-wrap items-center justify-between gap-2 border-t border-[#3a322a] bg-[#1e1a16] px-4 py-2.5 text-xs text-[#f4ece1]"
               >
                 <span>You&apos;re on your own pace · Sync to host</span>
                 <button
                   type="button"
                   onClick={handleSyncToHost}
                   disabled={syncingToHost}
-                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-[#E50914] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-50 cursor-pointer"
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-[#f2a33a] px-4 py-1.5 text-xs font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw
                     className={`h-3.5 w-3.5 ${syncingToHost ? 'animate-spin' : ''}`}
@@ -2031,7 +2031,7 @@ export function RoomPage({
           </div>
 
           {/* Playback controls + live time + reaction buttons */}
-          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#2a2a33] bg-[#14141a] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-4 flex flex-col gap-3 rounded-[20px] border border-[#3a322a] bg-[#1e1a16] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 {!(embedBlocked || archiveError) && (
@@ -2040,7 +2040,7 @@ export function RoomPage({
                       type="button"
                       onClick={handleTogglePlayPause}
                       disabled={!playerReady}
-                      className="inline-flex min-h-[42px] items-center gap-2 rounded-lg bg-[#E50914] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-5 py-2 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
                     >
                       {localIsPlaying ? (
                         <>
@@ -2061,9 +2061,9 @@ export function RoomPage({
                           type="button"
                           onClick={handleSyncEveryoneToMe}
                           disabled={!playerReady}
-                          className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#E50914]/50 bg-[#1b1013] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:border-[#E50914] active:bg-[#2a151a] disabled:opacity-45 cursor-pointer"
+                          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-45 cursor-pointer"
                         >
-                          <RefreshCw className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                          <RefreshCw className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
                           <span>Sync everyone to me</span>
                         </button>
 
@@ -2071,9 +2071,9 @@ export function RoomPage({
                           type="button"
                           onClick={handleStartTogether}
                           disabled={!playerReady || countdownValue !== null}
-                          className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] disabled:opacity-45 cursor-pointer"
+                          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-45 cursor-pointer"
                         >
-                          <Timer className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                          <Timer className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
                           <span>Start together</span>
                         </button>
                       </>
@@ -2082,10 +2082,10 @@ export function RoomPage({
                         type="button"
                         onClick={handleSyncToHost}
                         disabled={!playerReady || syncingToHost}
-                        className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] disabled:opacity-50 cursor-pointer"
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
                       >
                         <RefreshCw
-                          className={`h-3.5 w-3.5 ${syncingToHost ? 'animate-spin' : ''}`}
+                          className={`h-3.5 w-3.5 text-[#f2a33a] ${syncingToHost ? 'animate-spin' : ''}`}
                           aria-hidden="true"
                         />
                         <span>{syncingToHost ? 'Syncing...' : 'Sync to host'}</span>
@@ -2098,14 +2098,14 @@ export function RoomPage({
                   <button
                     type="button"
                     onClick={() => setPickerOpen(true)}
-                    className="inline-flex min-h-[42px] items-center gap-1.5 rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-3.5 py-2 text-xs font-medium text-zinc-200 transition-colors hover:border-white/30 active:bg-[#282834] cursor-pointer"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                   >
-                    <Video className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                    <Video className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
                     <span>Change video</span>
                   </button>
                 )}
 
-                <span className="font-mono text-xs text-zinc-300 tabular-nums px-1">
+                <span className="font-mono text-xs text-[#b9aa98] tabular-nums px-1">
                   {isHost
                     ? 'Room time'
                     : ownPace
@@ -2116,8 +2116,8 @@ export function RoomPage({
               </div>
 
               {!isHost && (
-                <p className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
-                  <Crown className="h-3.5 w-3.5 text-[#E50914]" aria-hidden="true" />
+                <p className="inline-flex items-center gap-1.5 text-xs text-[#b9aa98]">
+                  <Crown className="h-3.5 w-3.5 text-[#f2a33a]" aria-hidden="true" />
                   <span>
                     {ownPace
                       ? "You're on your own pace · Your controls only affect you"
@@ -2140,14 +2140,14 @@ export function RoomPage({
                     type="button"
                     onClick={() => handleSendReaction(emoji)}
                     aria-label={`React with ${emoji}`}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#2a2a33] bg-[#1b1b24] text-lg transition-colors hover:border-[#E50914] active:bg-[#2a2a38] cursor-pointer"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-lg transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
                   >
                     {emoji}
                   </button>
                 ))}
               </div>
               {reactionNote && (
-                <p className="text-[11px] text-zinc-400" role="status">
+                <p className="text-[11px] text-[#b9aa98]" role="status">
                   {reactionNote}
                 </p>
               )}
@@ -2175,17 +2175,17 @@ export function RoomPage({
             <div
               role="tablist"
               aria-label="Room panels"
-              className="mb-3 grid grid-cols-3 gap-1.5 rounded-xl border border-[#2a2a33] bg-[#14141a] p-1"
+              className="mb-3 grid grid-cols-3 gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] p-1"
             >
               <button
                 type="button"
                 role="tab"
                 aria-selected={mobileTab === 'chat'}
                 onClick={() => setMobileTab('chat')}
-                className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                className={`inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs transition-colors cursor-pointer ${
                   mobileTab === 'chat'
-                    ? 'bg-[#E50914] text-white'
-                    : 'text-zinc-300 hover:text-white'
+                    ? 'bg-[#f2a33a] font-bold text-[#1a1208]'
+                    : 'font-medium text-[#b9aa98] hover:text-[#f4ece1]'
                 }`}
               >
                 <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
@@ -2197,10 +2197,10 @@ export function RoomPage({
                 role="tab"
                 aria-selected={mobileTab === 'people'}
                 onClick={() => setMobileTab('people')}
-                className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                className={`inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs transition-colors cursor-pointer ${
                   mobileTab === 'people'
-                    ? 'bg-[#E50914] text-white'
-                    : 'text-zinc-300 hover:text-white'
+                    ? 'bg-[#f2a33a] font-bold text-[#1a1208]'
+                    : 'font-medium text-[#b9aa98] hover:text-[#f4ece1]'
                 }`}
               >
                 <Users className="h-3.5 w-3.5" aria-hidden="true" />
@@ -2212,10 +2212,10 @@ export function RoomPage({
                 role="tab"
                 aria-selected={mobileTab === 'queue'}
                 onClick={() => setMobileTab('queue')}
-                className={`inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                className={`inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs transition-colors cursor-pointer ${
                   mobileTab === 'queue'
-                    ? 'bg-[#E50914] text-white'
-                    : 'text-zinc-300 hover:text-white'
+                    ? 'bg-[#f2a33a] font-bold text-[#1a1208]'
+                    : 'font-medium text-[#b9aa98] hover:text-[#f4ece1]'
                 }`}
               >
                 <ListVideo className="h-3.5 w-3.5" aria-hidden="true" />
@@ -2287,22 +2287,22 @@ export function RoomPage({
           role="dialog"
           aria-modal="true"
           aria-labelledby="join-choice-title"
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 sm:items-center sm:p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[#14110f]/85 p-0 sm:items-center sm:p-4"
         >
-          <div className="w-full max-w-md rounded-t-2xl border border-white/10 bg-[#14141a] p-5 shadow-2xl sm:rounded-2xl sm:p-6">
+          <div className="w-full max-w-md rounded-t-[20px] border border-[#3a322a] bg-[#1e1a16] p-5 sm:rounded-[20px] sm:p-6">
             <h2
               id="join-choice-title"
-              className="font-display text-xl font-bold text-white tabular-nums"
+              className="text-xl font-bold text-[#f4ece1] tabular-nums"
             >
               The movie is already at {formatSeconds(joinModalState.positionSeconds)}
             </h2>
 
             {joinModalState.hostAway ? (
-              <p className="mt-1.5 text-sm font-medium text-amber-300">
+              <p className="mt-1.5 text-sm font-medium text-[#f2a33a]">
                 Host seems to be away
               </p>
             ) : (
-              <p className="mt-1.5 text-sm text-zinc-400">
+              <p className="mt-1.5 text-sm text-[#b9aa98]">
                 Continue watching with the host or start from 0:00 at your own pace.
               </p>
             )}
@@ -2311,14 +2311,14 @@ export function RoomPage({
               <button
                 type="button"
                 onClick={handleContinueWithHost}
-                className="inline-flex min-h-[46px] w-full items-center justify-center rounded-lg bg-[#E50914] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#F40612] active:bg-[#b80710] cursor-pointer"
+                className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full bg-[#f2a33a] px-5 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
               >
                 Continue with host
               </button>
               <button
                 type="button"
                 onClick={handleStartFromBeginning}
-                className="inline-flex min-h-[46px] w-full items-center justify-center rounded-lg border border-[#2a2a33] bg-[#1b1b24] px-4 py-2.5 text-sm font-medium text-zinc-100 transition-colors hover:border-white/30 active:bg-[#252530] cursor-pointer"
+                className="inline-flex min-h-[48px] w-full items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] px-5 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
               >
                 Start from the beginning
               </button>
