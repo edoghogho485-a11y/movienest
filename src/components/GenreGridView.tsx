@@ -1,21 +1,25 @@
 import { ArrowLeft } from 'lucide-react';
-import { GenreDefinition } from '../data/genres';
 import { ArchiveGenreDefinition, ArchiveMovieItem } from '../lib/archive';
 import { SharedLibraryItem } from '../lib/supabase';
 import { YouTubeSearchResult } from '../lib/youtube';
 import { ArchiveMovieCard } from './ArchiveMovieCard';
+import { OurPickCard, YouTubeRowMeta } from './GenreRows';
 import { YouTubeMovieCard } from './YouTubeMovieCard';
 
 export type SeeAllViewData =
   | {
       kind: 'youtube';
-      genre: GenreDefinition;
+      genre: YouTubeRowMeta;
       videos: YouTubeSearchResult[];
     }
   | {
       kind: 'archive';
       genre: ArchiveGenreDefinition;
       movies: ArchiveMovieItem[];
+    }
+  | {
+      kind: 'our-picks';
+      items: SharedLibraryItem[];
     };
 
 interface GenreGridViewProps {
@@ -24,10 +28,12 @@ interface GenreGridViewProps {
   onWatchYouTube: (video: YouTubeSearchResult) => void;
   onCreateRoomYouTube: (video: YouTubeSearchResult) => void;
   onShareYouTube: (video: YouTubeSearchResult) => void;
-  onSavedToLibrary: (item: SharedLibraryItem) => void;
   onWatchArchive: (movie: ArchiveMovieItem) => void;
   onCreateRoomArchive: (movie: ArchiveMovieItem) => void;
   onShareArchive: (movie: ArchiveMovieItem) => void;
+  onWatchOurPick: (item: SharedLibraryItem) => void;
+  onCreateRoomOurPick: (item: SharedLibraryItem) => void;
+  onShareOurPick: (item: SharedLibraryItem) => void;
 }
 
 export function GenreGridView({
@@ -36,12 +42,22 @@ export function GenreGridView({
   onWatchYouTube,
   onCreateRoomYouTube,
   onShareYouTube,
-  onSavedToLibrary,
   onWatchArchive,
   onCreateRoomArchive,
   onShareArchive,
+  onWatchOurPick,
+  onCreateRoomOurPick,
+  onShareOurPick,
 }: GenreGridViewProps) {
-  const count = data.kind === 'youtube' ? data.videos.length : data.movies.length;
+  const count =
+    data.kind === 'youtube'
+      ? data.videos.length
+      : data.kind === 'archive'
+        ? data.movies.length
+        : data.items.length;
+
+  const heading =
+    data.kind === 'our-picks' ? 'Our picks' : data.genre.name;
 
   return (
     <section className="px-4 py-6 sm:px-6 lg:px-8">
@@ -57,11 +73,11 @@ export function GenreGridView({
           </button>
           <div className="mt-3 flex items-center gap-2.5">
             <h1 className="text-2xl font-bold tracking-tight text-[#f4ece1] sm:text-3xl">
-              {data.genre.name}
+              {heading}
             </h1>
             {data.kind === 'archive' && (
               <span className="text-xs font-medium text-[#b9aa98]">
-                · Archive
+                · Public domain
               </span>
             )}
           </div>
@@ -78,22 +94,31 @@ export function GenreGridView({
               <YouTubeMovieCard
                 key={`grid-${data.genre.slug}-${video.videoId}`}
                 video={video}
-                defaultCategory={data.genre.defaultCategory}
+                sourceLabel={data.genre.sourceLabel ?? video.sourceLabel}
                 onWatch={onWatchYouTube}
                 onCreateRoom={onCreateRoomYouTube}
                 onShare={onShareYouTube}
-                onSavedToLibrary={onSavedToLibrary}
               />
             ))
-          : data.movies.map((movie) => (
-              <ArchiveMovieCard
-                key={`grid-${data.genre.slug}-${movie.identifier}`}
-                movie={movie}
-                onWatch={onWatchArchive}
-                onCreateRoom={onCreateRoomArchive}
-                onShare={onShareArchive}
-              />
-            ))}
+          : data.kind === 'archive'
+            ? data.movies.map((movie) => (
+                <ArchiveMovieCard
+                  key={`grid-${data.genre.slug}-${movie.identifier}`}
+                  movie={movie}
+                  onWatch={onWatchArchive}
+                  onCreateRoom={onCreateRoomArchive}
+                  onShare={onShareArchive}
+                />
+              ))
+            : data.items.map((item) => (
+                <OurPickCard
+                  key={`grid-pick-${item.video_id}`}
+                  item={item}
+                  onWatch={onWatchOurPick}
+                  onCreateRoom={onCreateRoomOurPick}
+                  onShare={onShareOurPick}
+                />
+              ))}
       </div>
     </section>
   );

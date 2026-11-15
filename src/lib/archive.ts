@@ -1,47 +1,36 @@
 import { getSearchCache, upsertSearchCache } from './supabase';
 
-// Cache Archive search results for 72 hours (in milliseconds)
-const ARCHIVE_CACHE_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+// Cache Archive results for 24 hours (in milliseconds)
+const ARCHIVE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export interface ArchiveMovieItem {
   identifier: string;
   title: string;
   year?: string;
+  addeddate?: string;
   thumbnail: string;
 }
 
 export interface ArchiveGenreDefinition {
-  slug: string;
+  slug: 'archive-new' | 'archive-classics';
   name: string;
   query: string;
+  sort: 'addeddate desc' | 'downloads desc';
 }
 
-// 5 Classic / Public Domain rows powered by Internet Archive (no API key needed)
+// Two public-domain Internet Archive movie rows (no API key needed)
 export const ARCHIVE_GENRE_LIST: ArchiveGenreDefinition[] = [
   {
-    slug: 'classic-movies',
-    name: 'Classic Movies',
+    slug: 'archive-new',
+    name: 'Recently added',
     query: 'mediatype:movies AND collection:feature_films',
+    sort: 'addeddate desc',
   },
   {
-    slug: 'sci-fi-classics',
-    name: 'Sci-Fi Classics',
-    query: 'mediatype:movies AND collection:feature_films AND subject:(sci-fi OR "science fiction")',
-  },
-  {
-    slug: 'horror-classics',
-    name: 'Horror Classics',
-    query: 'mediatype:movies AND collection:feature_films AND subject:horror',
-  },
-  {
-    slug: 'comedy-classics',
-    name: 'Comedy Classics',
-    query: 'mediatype:movies AND collection:feature_films AND subject:comedy',
-  },
-  {
-    slug: 'cartoons',
-    name: 'Cartoons',
-    query: 'mediatype:movies AND collection:feature_films AND subject:(animation OR cartoon OR cartoons)',
+    slug: 'archive-classics',
+    name: 'Classics',
+    query: 'mediatype:movies AND collection:feature_films',
+    sort: 'downloads desc',
   },
 ];
 
@@ -56,12 +45,12 @@ export function isValidArchiveDownloadUrl(
   return typeof url === 'string' && url.startsWith('https://archive.org/download/');
 }
 
-// Search Internet Archive advancedsearch.php with 72-hour Supabase search_cache caching
+// Fetch Internet Archive advancedsearch.php with 24-hour Supabase search_cache support
 export async function searchArchiveWithCache(
   archiveQuery: string,
-  cacheSlug: string
+  cacheKey: string,
+  sort = 'downloads desc'
 ): Promise<{ results: ArchiveMovieItem[]; error: boolean }> {
-  const cacheKey = `archive:${cacheSlug}`;
   const cached = await getSearchCache<ArchiveMovieItem>(cacheKey);
 
   if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
@@ -80,9 +69,9 @@ export async function searchArchiveWithCache(
     params.append('fl[]', 'identifier');
     params.append('fl[]', 'title');
     params.append('fl[]', 'year');
-    params.append('sort[]', 'downloads desc');
-    params.set('rows', '12');
-    params.set('page', '1');
+    params.append('fl[]', 'addeddate');
+    params.append('sort[]', sort);
+    params.set('rows', '24');
     params.set('output', 'json');
 
     const response = await fetch(
@@ -90,7 +79,7 @@ export async function searchArchiveWithCache(
     );
 
     if (!response.ok) {
-      if (cached && cached.results.length > 0) {
+      if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
         return { results: cached.results, error: false };
       }
       return { results: [], error: true };
@@ -102,6 +91,7 @@ export async function searchArchiveWithCache(
           identifier?: string;
           title?: string | string[];
           year?: string | number;
+          addeddate?: string;
         }>;
       };
     };
@@ -116,6 +106,7 @@ export async function searchArchiveWithCache(
           identifier,
           title: (rawTitle && String(rawTitle).trim()) || identifier,
           year: doc.year !== undefined ? String(doc.year) : undefined,
+          addeddate: typeof doc.addeddate === 'string' ? doc.addeddate : undefined,
           thumbnail: getArchiveThumbnail(identifier),
         };
       });
@@ -126,7 +117,7 @@ export async function searchArchiveWithCache(
 
     return { results: mapped, error: false };
   } catch {
-    if (cached && cached.results.length > 0) {
+    if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
       return { results: cached.results, error: false };
     }
     return { results: [], error: true };

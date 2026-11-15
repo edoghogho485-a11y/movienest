@@ -7,7 +7,6 @@ import {
   Share2,
   Users,
 } from 'lucide-react';
-import { LibraryVideo } from '../data/libraryVideos';
 import {
   fetchArchiveMovieDetails,
   getArchiveThumbnail,
@@ -41,19 +40,19 @@ export interface WatchableVideo {
 
 interface VideoPlayerPageProps {
   video: WatchableVideo;
-  relatedVideos: LibraryVideo[];
+  relatedVideos: WatchableVideo[];
   onBack: () => void;
   onShare: (target: ShareTarget) => void;
   onInviteFriends: (video: WatchableVideo, currentSeconds: number) => void;
-  onSelectSampleVideo: (video: LibraryVideo) => void;
+  onSelectRelatedVideo: (video: WatchableVideo) => void;
 }
 
 function RelatedVideoCard({
   item,
   onSelect,
 }: {
-  item: LibraryVideo;
-  onSelect: (video: LibraryVideo) => void;
+  item: WatchableVideo;
+  onSelect: (video: WatchableVideo) => void;
 }) {
   const [imgError, setImgError] = useState(false);
 
@@ -80,14 +79,16 @@ function RelatedVideoCard({
             </span>
           </div>
         )}
-        <span className="absolute right-2.5 bottom-2 rounded-md bg-[#14110f]/90 px-2 py-0.5 font-mono text-xs font-medium text-[#f4ece1] tabular-nums">
-          {item.duration}
-        </span>
+        {item.duration && (
+          <span className="absolute right-2.5 bottom-2 rounded-md bg-[#14110f]/90 px-2 py-0.5 font-mono text-xs font-medium text-[#f4ece1] tabular-nums">
+            {item.duration}
+          </span>
+        )}
       </div>
       <p className="mt-2 text-sm font-bold text-[#f4ece1] line-clamp-1 group-hover:text-[#f2a33a]">
         {item.title}
       </p>
-      <p className="mt-0.5 text-xs text-[#b9aa98]">{item.category}</p>
+      <p className="mt-0.5 text-xs text-[#b9aa98] truncate">{item.category}</p>
     </button>
   );
 }
@@ -99,7 +100,7 @@ export function VideoPlayerPage({
   onBack,
   onShare,
   onInviteFriends,
-  onSelectSampleVideo,
+  onSelectRelatedVideo,
 }: VideoPlayerPageProps) {
   const isArchive = video.source === 'archive';
 
@@ -563,14 +564,14 @@ export function VideoPlayerPage({
       {relatedVideos.length > 0 && (
         <div className="mt-8">
           <h2 className="text-lg font-bold text-[#f4ece1]">
-            Sample Videos
+            More to Watch
           </h2>
           <div className="mt-4 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
             {relatedVideos.slice(0, 4).map((item) => (
               <RelatedVideoCard
-                key={item.id}
+                key={`${item.source ?? 'youtube'}-${item.youtubeId}`}
                 item={item}
-                onSelect={onSelectSampleVideo}
+                onSelect={onSelectRelatedVideo}
               />
             ))}
           </div>

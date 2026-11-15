@@ -1,11 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookmarkPlus, Check, Film, Link2, Users, X } from 'lucide-react';
-import {
-  saveToSharedLibrary,
-  SHARED_LIBRARY_CATEGORIES,
-  SharedLibraryCategory,
-  SharedLibraryItem,
-} from '../lib/supabase';
+import { Film, Link2, Users, X } from 'lucide-react';
 import {
   extractYouTubeId,
   fetchYouTubeTitle,
@@ -22,24 +16,12 @@ interface PasteYouTubeBarProps {
   variant?: 'home' | 'modal';
   inputId?: string;
   onCreateRoomWithVideo: (video: PastedYouTubeVideo) => void;
-  onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
-
-// Category order shown when saving to the shared library
-const SAVE_CATEGORIES: SharedLibraryCategory[] = [
-  'Movies',
-  'Nollywood',
-  'Animation',
-  'Documentary',
-  'Music',
-  'Other',
-];
 
 export function PasteYouTubeBar({
   variant = 'home',
   inputId = 'paste-youtube-input',
   onCreateRoomWithVideo,
-  onSavedToLibrary,
 }: PasteYouTubeBarProps) {
   const [urlInput, setUrlInput] = useState('');
   const [videoId, setVideoId] = useState<string | null>(null);
@@ -47,23 +29,11 @@ export function PasteYouTubeBar({
   const [loadingTitle, setLoadingTitle] = useState(false);
   const [thumbError, setThumbError] = useState(false);
 
-  // Category picker state for "Save to Library"
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-  const [selectedCategory, setSelectedCategory] =
-    useState<SharedLibraryCategory>('Movies');
-  const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<{
-    text: string;
-    tone: 'success' | 'info' | 'error';
-  } | null>(null);
-
   // Parse pasted YouTube URL and fetch its title via oEmbed whenever ID changes
   useEffect(() => {
     const parsedId = extractYouTubeId(urlInput);
     setVideoId(parsedId);
     setThumbError(false);
-    setShowCategoryPicker(false);
-    setSaveMessage(null);
 
     if (!parsedId) {
       setTitle('');
@@ -85,53 +55,6 @@ export function PasteYouTubeBar({
       cancelled = true;
     };
   }, [urlInput]);
-
-  const handleSaveToLibrary = async (categoryToSave: SharedLibraryCategory) => {
-    if (!videoId || saving) return;
-
-    setSaving(true);
-    setSaveMessage(null);
-
-    // Ensure we have a clean title even if user clicked fast while oEmbed was loading
-    const finalTitle =
-      loadingTitle || !title ? await fetchYouTubeTitle(videoId) : title;
-
-    const { item, duplicate, error } = await saveToSharedLibrary({
-      videoId,
-      title: finalTitle,
-      category: categoryToSave,
-    });
-
-    setSaving(false);
-
-    if (error) {
-      setSaveMessage({
-        text: 'Could not save right now. Please try again.',
-        tone: 'error',
-      });
-      return;
-    }
-
-    if (duplicate) {
-      setShowCategoryPicker(false);
-      setSaveMessage({
-        text: item
-          ? `Already in library under ${item.category}.`
-          : 'Already saved in the shared library.',
-        tone: 'info',
-      });
-      return;
-    }
-
-    if (item) {
-      onSavedToLibrary(item);
-      setShowCategoryPicker(false);
-      setSaveMessage({
-        text: `Saved to ${item.category}.`,
-        tone: 'success',
-      });
-    }
-  };
 
   const thumbnailUrl = videoId ? getYouTubeThumbnail(videoId) : '';
   const hasInvalidText = urlInput.trim().length > 0 && !videoId;
@@ -230,70 +153,9 @@ export function PasteYouTubeBar({
                   <Users className="h-4 w-4" aria-hidden="true" />
                   <span>Create Room with this</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCategoryPicker((prev) => !prev);
-                    setSaveMessage(null);
-                  }}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2 text-sm font-medium text-[#f4ece1] whitespace-nowrap transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-                >
-                  <BookmarkPlus className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-                  <span>Save to Library</span>
-                </button>
               </div>
             </div>
           </div>
-
-          {showCategoryPicker && (
-            <div className="mt-4 border-t border-[#3a322a] pt-3.5">
-              <p className="text-xs font-medium text-[#f4ece1]">
-                Choose a category to save this video:
-              </p>
-              <div className="mt-2.5 flex flex-wrap gap-2">
-                {SAVE_CATEGORIES.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      setSelectedCategory(category);
-                      void handleSaveToLibrary(category);
-                    }}
-                    className={`min-h-[44px] rounded-full px-4 py-2 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
-                      selectedCategory === category && saving
-                        ? 'bg-[#f2a33a] text-[#1a1208] font-bold'
-                        : 'border border-[#3a322a] bg-[#14110f] text-[#f4ece1] hover:border-[#f2a33a] active:bg-[#2a241e]'
-                    }`}
-                  >
-                    {category}
-                  </button>
-                ))}
-              </div>
-              {saving && (
-                <p className="mt-2 text-xs text-[#b9aa98]">Saving to shared library...</p>
-              )}
-            </div>
-          )}
-
-          {saveMessage && (
-            <p
-              className={`mt-3 flex items-center gap-1.5 text-xs font-medium ${
-                saveMessage.tone === 'error'
-                  ? 'text-[#f2a33a]'
-                  : saveMessage.tone === 'success'
-                    ? 'text-[#f2a33a]'
-                    : 'text-[#b9aa98]'
-              }`}
-              role="status"
-            >
-              {saveMessage.tone === 'success' && (
-                <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              )}
-              <span>{saveMessage.text}</span>
-            </p>
-          )}
         </div>
       )}
     </div>
@@ -312,6 +174,3 @@ export function PasteYouTubeBar({
     </section>
   );
 }
-
-// Keep unused export check clean if callers inspect categories
-export { SHARED_LIBRARY_CATEGORIES };

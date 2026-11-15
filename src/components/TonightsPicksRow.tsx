@@ -1,26 +1,32 @@
-import { SharedLibraryItem } from '../lib/supabase';
+import { ArchiveMovieItem } from '../lib/archive';
+import { LegalPickItem } from '../lib/moodCatalog';
 import { YouTubeSearchResult } from '../lib/youtube';
+import { ArchiveMovieCard } from './ArchiveMovieCard';
 import { YouTubeMovieCard } from './YouTubeMovieCard';
 
 interface TonightsPicksRowProps {
-  videos: YouTubeSearchResult[];
-  onWatch: (video: YouTubeSearchResult) => void;
-  onCreateRoom: (video: YouTubeSearchResult) => void;
-  onShare: (video: YouTubeSearchResult) => void;
-  onSavedToLibrary: (item: SharedLibraryItem) => void;
+  items: LegalPickItem[];
+  onWatchYouTube: (video: YouTubeSearchResult) => void;
+  onCreateRoomYouTube: (video: YouTubeSearchResult) => void;
+  onShareYouTube: (video: YouTubeSearchResult) => void;
+  onWatchArchive: (movie: ArchiveMovieItem) => void;
+  onCreateRoomArchive: (movie: ArchiveMovieItem) => void;
+  onShareArchive: (movie: ArchiveMovieItem) => void;
   onBrowseAllMovies: () => void;
 }
 
 // Home page "Tonight's picks" section: horizontal scroll on phones, 4-column grid on laptops
 export function TonightsPicksRow({
-  videos,
-  onWatch,
-  onCreateRoom,
-  onShare,
-  onSavedToLibrary,
+  items,
+  onWatchYouTube,
+  onCreateRoomYouTube,
+  onShareYouTube,
+  onWatchArchive,
+  onCreateRoomArchive,
+  onShareArchive,
   onBrowseAllMovies,
 }: TonightsPicksRowProps) {
-  if (!videos || videos.length === 0) return null;
+  if (!items || items.length === 0) return null;
 
   return (
     <section
@@ -42,23 +48,33 @@ export function TonightsPicksRow({
           onClick={onBrowseAllMovies}
           className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-xs font-medium text-[#f4ece1] whitespace-nowrap transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
         >
-          Browse all genres
+          Browse all sources
         </button>
       </div>
 
       {/* Horizontal scroll on phones, 4 cards per row on laptops */}
       <div className="mt-4 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory lg:grid lg:grid-cols-4 lg:gap-4 lg:overflow-visible lg:pb-0">
-        {videos.map((video) => (
-          <YouTubeMovieCard
-            key={`tonight-${video.videoId}`}
-            video={video}
-            className="w-[240px] sm:w-[270px] shrink-0 snap-start lg:w-full"
-            onWatch={onWatch}
-            onCreateRoom={onCreateRoom}
-            onShare={onShare}
-            onSavedToLibrary={onSavedToLibrary}
-          />
-        ))}
+        {items.map((entry) =>
+          entry.kind === 'youtube' ? (
+            <YouTubeMovieCard
+              key={`tonight-yt-${entry.video.videoId}`}
+              video={entry.video}
+              className="w-[240px] sm:w-[270px] shrink-0 snap-start lg:w-full"
+              onWatch={onWatchYouTube}
+              onCreateRoom={onCreateRoomYouTube}
+              onShare={onShareYouTube}
+            />
+          ) : (
+            <ArchiveMovieCard
+              key={`tonight-ar-${entry.movie.identifier}`}
+              movie={entry.movie}
+              className="w-[240px] sm:w-[270px] shrink-0 snap-start lg:w-full"
+              onWatch={onWatchArchive}
+              onCreateRoom={onCreateRoomArchive}
+              onShare={onShareArchive}
+            />
+          )
+        )}
       </div>
     </section>
   );

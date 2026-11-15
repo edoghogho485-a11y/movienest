@@ -9,7 +9,6 @@ import {
   X,
 } from 'lucide-react';
 import { UserProfile } from '../lib/supabase';
-import { hasYouTubeApiKey } from '../lib/youtube';
 import { MovieNestLogo } from './MovieNestLogo';
 
 interface TopBarProps {
@@ -99,60 +98,54 @@ export function TopBar({
         </button>
 
         {/* Desktop & tablet search box (hidden on phones, expands via search icon button) */}
-        {hasYouTubeApiKey ? (
-          <form
-            onSubmit={handleSubmit}
-            className="hidden md:flex flex-1 max-w-md items-center gap-2 mx-2"
+        <form
+          onSubmit={handleSubmit}
+          className="hidden md:flex flex-1 max-w-md items-center gap-2 mx-2"
+        >
+          <div className="relative flex-1">
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Search movies..."
+              aria-label="Search movies"
+              className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
+            />
+            {(input || searchQuery) && (
+              <button
+                type="button"
+                onClick={handleClear}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={!input.trim() || searching}
+            className="min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-xs font-medium text-[#f4ece1] whitespace-nowrap shrink-0 transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
           >
-            <div className="relative flex-1">
-              <Search
-                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
-                aria-hidden="true"
-              />
-              <input
-                type="search"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Search full movies on YouTube..."
-                aria-label="Search full movies on YouTube"
-                className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
-              />
-              {(input || searchQuery) && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  aria-label="Clear search"
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
-                >
-                  <X className="h-4 w-4" aria-hidden="true" />
-                </button>
-              )}
-            </div>
-            <button
-              type="submit"
-              disabled={!input.trim() || searching}
-              className="min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-xs font-medium text-[#f4ece1] whitespace-nowrap shrink-0 transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
-            >
-              {searching ? 'Searching...' : 'Search'}
-            </button>
-          </form>
-        ) : (
-          <div className="hidden md:block flex-1" />
-        )}
+            {searching ? 'Searching...' : 'Search'}
+          </button>
+        </form>
 
         {/* Right actions: phone search toggle, Join room outline pill, Start a room amber pill, profile */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {hasYouTubeApiKey && (
-            <button
-              type="button"
-              onClick={() => setMobileSearchOpen((prev) => !prev)}
-              aria-label="Toggle movie search"
-              aria-expanded={mobileSearchOpen}
-              className="flex h-11 w-11 min-h-[44px] items-center justify-center rounded-full border border-[#3a322a] bg-[#1e1a16] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] md:hidden cursor-pointer"
-            >
-              <Search className="h-4 w-4" aria-hidden="true" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setMobileSearchOpen((prev) => !prev)}
+            aria-label="Toggle movie search"
+            aria-expanded={mobileSearchOpen}
+            className="flex h-11 w-11 min-h-[44px] items-center justify-center rounded-full border border-[#3a322a] bg-[#1e1a16] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] md:hidden cursor-pointer"
+          >
+            <Search className="h-4 w-4" aria-hidden="true" />
+          </button>
 
           <button
             type="button"
@@ -254,7 +247,7 @@ export function TopBar({
       </div>
 
       {/* Expandable search row for phones */}
-      {hasYouTubeApiKey && mobileSearchOpen && (
+      {mobileSearchOpen && (
         <form
           onSubmit={handleSubmit}
           className="flex items-center gap-2 border-t border-[#3a322a] bg-[#14110f] px-3 py-2.5 md:hidden"
@@ -263,8 +256,8 @@ export function TopBar({
             type="search"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Search full movies on YouTube..."
-            aria-label="Search full movies on YouTube"
+            placeholder="Search movies..."
+            aria-label="Search movies"
             autoFocus
             className="min-w-0 flex-1 min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
           />

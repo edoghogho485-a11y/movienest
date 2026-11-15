@@ -1,13 +1,16 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Check, Film, Link2, Play, Plus, Search, X } from 'lucide-react';
-import { GENRE_LIST } from '../data/genres';
 import {
-  ARCHIVE_GENRE_LIST,
-  ArchiveMovieItem,
   fetchArchiveMovieDetails,
   isValidArchiveDownloadUrl,
-  searchArchiveWithCache,
 } from '../lib/archive';
+import {
+  EMPTY_LEGAL_CATALOG,
+  LegalCatalogState,
+  loadAllLegalSources,
+  searchLegalCatalog,
+  TRUSTED_GENRE_DEFINITIONS,
+} from '../lib/legalSources';
 import {
   QUEUE_MAX_ITEMS,
   QueueItem,
@@ -17,9 +20,6 @@ import {
   extractYouTubeId,
   fetchYouTubeTitle,
   getYouTubeThumbnail,
-  hasYouTubeApiKey,
-  searchYouTubeWithCache,
-  YouTubeSearchResult,
 } from '../lib/youtube';
 
 export interface PickerMovieSelection {
@@ -40,26 +40,10 @@ interface RoomVideoPickerModalProps {
   onAddToQueue: (movie: PickerMovieSelection) => Promise<string | null>;
 }
 
-type PickerTab =
-  | { kind: 'youtube-genre'; slug: string; name: string; query: string }
-  | { kind: 'archive-genre'; slug: string; name: string; query: string }
-  | { kind: 'library'; slug: 'saved-library'; name: string };
-
-const PICKER_TABS: PickerTab[] = [
-  ...GENRE_LIST.map((g) => ({
-    kind: 'youtube-genre' as const,
-    slug: g.slug,
-    name: g.name,
-    query: g.query,
-  })),
-  ...ARCHIVE_GENRE_LIST.map((g) => ({
-    kind: 'archive-genre' as const,
-    slug: g.slug,
-    name: `${g.name} (Archive)`,
-    query: g.query,
-  })),
-  { kind: 'library', slug: 'saved-library', name: 'Saved Library' },
-];
+interface PickerTab {
+  slug: string;
+  name: string;
+}
 
 export function RoomVideoPickerModal({
   open,
@@ -72,21 +56,20 @@ export function RoomVideoPickerModal({
 }: RoomVideoPickerModalProps) {
   const safeQueue = Array.isArray(queue) ? queue : [];
   const safeLibrary = Array.isArray(sharedLibrary) ? sharedLibrary : [];
+
   const [searchInput, setSearchInput] = useState('');
   const [activeSearchQuery, setActiveSearchQuery] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<YouTubeSearchResult[]>([]);
 
-  // Paste-a-link bar inside picker so rooms can always load any YouTube link
+  // Paste-a-link bar inside picker so rooms can always load a pasted YouTube link
   const [pasteInput, setPasteInput] = useState('');
   const [pastedId, setPastedId] = useState<string | null>(null);
   const [pastedTitle, setPastedTitle] = useState('');
 
-  const [activeSlug, setActiveSlug] = useState<string>(PICKER_TABS[0].slug);
-  const [tabLoading, setTabLoading] = useState(false);
-  const [youtubeBySlug, setYoutubeBySlug] = useState<Record<string, YouTubeSearchResult[]>>({});
-  const [archiveBySlug, setArchiveBySlug] = useState<Record<string, ArchiveMovieItem[]>>({});
+  const [catalog, setCatalog] = useState<LegalCatalogState>(EMPTY_LEGAL_CATALOG);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
 
+  const [activeSlug, setActiveSlug] = useState<string>('our-picks');
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
 
@@ -99,6 +82,28 @@ export function RoomVideoPickerModal({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onClose]);
+
+  // Load cached legal sources the first time the picker opens
+  useEffect(() => {
+    if (!open || catalogLoaded) return;
+    let cancelled = false;
+    setCatalogLoading(true);
+    void loadAllLegalSources()
+      .then((loaded) => {
+        if (cancelled) return;
+        setCatalog({
+          ...loaded,
+          ourPicks: loaded.ourPicks.length > 0 ? loaded.ourPicks : safeLibrary,
+        });
+        setCatalogLoaded(true);
+      })
+      .finally(() => {
+        if (!cancelled) setCatalogLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, catalogLoaded, safeLibrary]);
 
   // Parse pasted YouTube URL and fetch title via oEmbed
   useEffect(() => {
@@ -118,55 +123,50 @@ export function RoomVideoPickerModal({
     };
   }, [pasteInput]);
 
-  // Lazy-load the selected genre tab when opened
+  // Build visible tabs strictly from non-empty legal sources
+  const tabs = useMemo<PickerTab[]>(() => {
+    const list: PickerTab[] = [];
+    const ourPicksList = catalog.ourPicks.length > 0 ? catalog.ourPicks : safeLibrary;
+
+    if (ourPicksList.length > 0) {
+      list.push({ slug: 'our-picks', name: 'Our picks' });
+    }
+    for (const genre of TRUSTED_GENRE_DEFINITIONS) {
+      if ((catalog.trustedByGenre[genre.slug]?.length ?? 0) > 0) {
+        list.push({ slug: genre.slug, name: genre.name });
+      }
+    }
+    if (catalog.trustedVideos.length > 0) {
+      list.push({ slug: 'official-channels', name: 'Official channels' });
+    }
+    if (catalog.creativeCommons.length > 0) {
+      list.push({ slug: 'creative-commons', name: 'Creative Commons' });
+    }
+    if (catalog.archiveNew.length > 0) {
+      list.push({ slug: 'archive-new', name: 'Recently added' });
+    }
+    if (catalog.archiveClassics.length > 0) {
+      list.push({ slug: 'archive-classics', name: 'Classics' });
+    }
+    return list;
+  }, [catalog, safeLibrary]);
+
   useEffect(() => {
-    if (!open || activeSearchQuery) return;
-    const currentTab = PICKER_TABS.find((t) => t.slug === activeSlug);
-    if (!currentTab || currentTab.kind === 'library') return;
-
-    if (currentTab.kind === 'youtube-genre') {
-      if (youtubeBySlug[currentTab.slug]) return;
-      let cancelled = false;
-      setTabLoading(true);
-      searchYouTubeWithCache(currentTab.query).then(({ results }) => {
-        if (cancelled) return;
-        setYoutubeBySlug((prev) => ({ ...prev, [currentTab.slug]: results }));
-        setTabLoading(false);
-      });
-      return () => {
-        cancelled = true;
-      };
+    if (tabs.length > 0 && !tabs.some((t) => t.slug === activeSlug)) {
+      setActiveSlug(tabs[0].slug);
     }
-
-    if (currentTab.kind === 'archive-genre') {
-      if (archiveBySlug[currentTab.slug]) return;
-      let cancelled = false;
-      setTabLoading(true);
-      searchArchiveWithCache(currentTab.query, currentTab.slug).then(({ results }) => {
-        if (cancelled) return;
-        setArchiveBySlug((prev) => ({ ...prev, [currentTab.slug]: results }));
-        setTabLoading(false);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-  }, [open, activeSlug, activeSearchQuery, youtubeBySlug, archiveBySlug]);
+  }, [tabs, activeSlug]);
 
   if (!open) return null;
 
   const isQueueFull = safeQueue.length >= QUEUE_MAX_ITEMS;
 
-  const handleSearch = async (e: FormEvent) => {
+  const handleSearch = (e: FormEvent) => {
     e.preventDefault();
     const q = searchInput.trim();
-    if (!q || !hasYouTubeApiKey) return;
+    if (!q) return;
     setActiveSearchQuery(q);
-    setSearching(true);
     setFeedback(null);
-    const { results } = await searchYouTubeWithCache(q);
-    setSearching(false);
-    setSearchResults(results);
   };
 
   const resolveAndRun = async (
@@ -218,7 +218,7 @@ export function RoomVideoPickerModal({
     }
   };
 
-  const renderCard = (movie: PickerMovieSelection, subtitle: string) => {
+  const renderCard = (movie: PickerMovieSelection, subtitle: string, badge?: string) => {
     const inQueue = safeQueue.some(
       (q) => q.videoId === movie.videoId && q.source === movie.source
     );
@@ -243,14 +243,17 @@ export function RoomVideoPickerModal({
               <Film className="h-6 w-6 text-[#f2a33a]" aria-hidden="true" />
             </div>
           )}
+          {badge && (
+            <span className="absolute left-1.5 top-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
+              {badge}
+            </span>
+          )}
         </div>
 
         <h3 className="mt-2 text-xs sm:text-sm font-bold text-[#f4ece1] line-clamp-2 leading-snug">
           {movie.title}
         </h3>
-        <p className="mt-0.5 text-[11px] text-[#b9aa98] truncate">
-          {movie.source === 'archive' ? `Archive · ${subtitle}` : subtitle}
-        </p>
+        <p className="mt-0.5 text-[11px] text-[#b9aa98] truncate">{subtitle}</p>
 
         <div className="mt-auto pt-2.5 flex flex-wrap items-center gap-1.5">
           {canChangeVideo && (
@@ -288,7 +291,17 @@ export function RoomVideoPickerModal({
     );
   };
 
-  const currentTab = PICKER_TABS.find((t) => t.slug === activeSlug) ?? PICKER_TABS[0];
+  const searchMatches = activeSearchQuery
+    ? searchLegalCatalog(
+        {
+          ...catalog,
+          ourPicks: catalog.ourPicks.length > 0 ? catalog.ourPicks : safeLibrary,
+        },
+        activeSearchQuery
+      )
+    : null;
+
+  const ourPicksList = catalog.ourPicks.length > 0 ? catalog.ourPicks : safeLibrary;
 
   return (
     <div
@@ -311,7 +324,7 @@ export function RoomVideoPickerModal({
               Change Video or Add to Queue
             </h2>
             <p className="text-xs text-[#b9aa98]">
-              Pick from YouTube, Internet Archive, or paste any YouTube link ({safeQueue.length}/
+              Pick from legal movie sources or paste any YouTube link ({safeQueue.length}/
               {QUEUE_MAX_ITEMS} queued)
             </p>
           </div>
@@ -327,45 +340,46 @@ export function RoomVideoPickerModal({
 
         {/* Search & Paste Controls */}
         <div className="border-b border-[#3a322a] bg-[#14110f] px-5 py-3.5 space-y-2.5">
-          {hasYouTubeApiKey && (
-            <form onSubmit={handleSearch} className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Search
-                  className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
-                  aria-hidden="true"
-                />
-                <input
-                  type="search"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search movies on YouTube..."
-                  aria-label="Search movies for room"
-                  className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
-                />
-                {(searchInput || activeSearchQuery) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchInput('');
-                      setActiveSearchQuery('');
-                      setSearchResults([]);
-                    }}
-                    aria-label="Clear room search"
-                    className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] cursor-pointer"
-                  >
-                    <X className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-              <button
-                type="submit"
-                disabled={!searchInput.trim() || searching}
-                className="min-h-[44px] rounded-full bg-[#f2a33a] px-5 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
-              >
-                {searching ? 'Searching...' : 'Search'}
-              </button>
-            </form>
-          )}
+          <form onSubmit={handleSearch} className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchInput(val);
+                  if (!val.trim()) setActiveSearchQuery('');
+                }}
+                placeholder="Search movies..."
+                aria-label="Search movies for room"
+                className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
+              />
+              {(searchInput || activeSearchQuery) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchInput('');
+                    setActiveSearchQuery('');
+                  }}
+                  aria-label="Clear room search"
+                  className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] cursor-pointer"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={!searchInput.trim()}
+              className="min-h-[44px] rounded-full bg-[#f2a33a] px-5 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
+            >
+              Search
+            </button>
+          </form>
 
           {/* Paste a YouTube URL */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -423,19 +437,16 @@ export function RoomVideoPickerModal({
           </div>
 
           {feedback && (
-            <p
-              role="status"
-              className="text-xs font-medium text-[#f2a33a]"
-            >
+            <p role="status" className="text-xs font-medium text-[#f2a33a]">
               {feedback.text}
             </p>
           )}
         </div>
 
-        {/* Genre row tabs */}
-        {!activeSearchQuery && (
+        {/* Legal source tabs */}
+        {!activeSearchQuery && tabs.length > 0 && (
           <div className="flex gap-2 overflow-x-auto border-b border-[#3a322a] px-5 py-2.5 no-scrollbar">
-            {PICKER_TABS.map((tab) => {
+            {tabs.map((tab) => {
               const selected = tab.slug === activeSlug;
               return (
                 <button
@@ -457,17 +468,15 @@ export function RoomVideoPickerModal({
 
         {/* Movie grid */}
         <div className="flex-1 overflow-y-auto p-5">
-          {activeSearchQuery ? (
-            searching ? (
-              <p className="text-sm text-[#b9aa98]">Searching YouTube...</p>
-            ) : searchResults.length === 0 ? (
+          {searchMatches ? (
+            searchMatches.youtube.length === 0 && searchMatches.archive.length === 0 ? (
               <p className="text-sm text-[#b9aa98]">
-                No embeddable movies found for &ldquo;{activeSearchQuery}&rdquo;. Try another
-                search or paste a YouTube link above.
+                No movies matched &ldquo;{activeSearchQuery}&rdquo;. Try another search or paste a
+                YouTube link above.
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-                {searchResults.map((video) =>
+                {searchMatches.youtube.map((video) =>
                   renderCard(
                     {
                       videoId: video.videoId,
@@ -475,59 +484,63 @@ export function RoomVideoPickerModal({
                       thumbnail: video.thumbnail,
                       source: 'youtube',
                     },
-                    video.channelTitle
+                    video.channelTitle,
+                    video.sourceLabel
                   )
                 )}
-              </div>
-            )
-          ) : currentTab.kind === 'library' ? (
-            safeLibrary.length === 0 ? (
-              <p className="text-sm text-[#b9aa98]">No saved videos in your shared library yet.</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-                {safeLibrary.map((item) =>
+                {searchMatches.archive.map((movie) =>
                   renderCard(
                     {
-                      videoId: item.video_id,
-                      title: item.title,
-                      thumbnail: getYouTubeThumbnail(item.video_id),
-                      source: 'youtube',
+                      videoId: movie.identifier,
+                      title: movie.title,
+                      thumbnail: movie.thumbnail,
+                      source: 'archive',
                     },
-                    item.category
+                    movie.year ? `${movie.year} · Public domain` : 'Public domain',
+                    'Public domain'
                   )
                 )}
               </div>
             )
-          ) : tabLoading ? (
+          ) : catalogLoading ? (
             <p className="text-sm text-[#b9aa98]">Loading movies...</p>
-          ) : currentTab.kind === 'youtube-genre' ? (
-            (youtubeBySlug[currentTab.slug]?.length ?? 0) === 0 ? (
-              <p className="text-sm text-[#b9aa98]">
-                No YouTube videos loaded for this row right now. Try an Archive tab or paste a link
-                above.
-              </p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-                {youtubeBySlug[currentTab.slug].map((video) =>
-                  renderCard(
-                    {
-                      videoId: video.videoId,
-                      title: video.title,
-                      thumbnail: video.thumbnail,
-                      source: 'youtube',
-                    },
-                    video.channelTitle
-                  )
-                )}
-              </div>
-            )
-          ) : (archiveBySlug[currentTab.slug]?.length ?? 0) === 0 ? (
+          ) : tabs.length === 0 ? (
             <p className="text-sm text-[#b9aa98]">
-              No Archive movies loaded for this category right now.
+              No catalog movies are available right now. Paste a YouTube link above to watch.
             </p>
-          ) : (
+          ) : activeSlug === 'our-picks' ? (
             <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-              {archiveBySlug[currentTab.slug].map((movie) =>
+              {ourPicksList.map((item) =>
+                renderCard(
+                  {
+                    videoId: item.video_id,
+                    title: item.title,
+                    thumbnail: getYouTubeThumbnail(item.video_id),
+                    source: 'youtube',
+                  },
+                  item.credit?.trim() || item.category,
+                  'Our picks'
+                )
+              )}
+            </div>
+          ) : activeSlug === 'creative-commons' ? (
+            <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+              {catalog.creativeCommons.map((video) =>
+                renderCard(
+                  {
+                    videoId: video.videoId,
+                    title: video.title,
+                    thumbnail: video.thumbnail,
+                    source: 'youtube',
+                  },
+                  video.channelTitle,
+                  'Creative Commons'
+                )
+              )}
+            </div>
+          ) : activeSlug === 'archive-new' ? (
+            <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+              {catalog.archiveNew.map((movie) =>
                 renderCard(
                   {
                     videoId: movie.identifier,
@@ -535,7 +548,53 @@ export function RoomVideoPickerModal({
                     thumbnail: movie.thumbnail,
                     source: 'archive',
                   },
-                  movie.year ? `${movie.year} · Internet Archive` : 'Internet Archive'
+                  movie.year ? `${movie.year} · Public domain` : 'Public domain',
+                  'Public domain'
+                )
+              )}
+            </div>
+          ) : activeSlug === 'archive-classics' ? (
+            <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+              {catalog.archiveClassics.map((movie) =>
+                renderCard(
+                  {
+                    videoId: movie.identifier,
+                    title: movie.title,
+                    thumbnail: movie.thumbnail,
+                    source: 'archive',
+                  },
+                  movie.year ? `${movie.year} · Public domain` : 'Public domain',
+                  'Public domain'
+                )
+              )}
+            </div>
+          ) : activeSlug === 'official-channels' ? (
+            <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+              {catalog.trustedVideos.map((video) =>
+                renderCard(
+                  {
+                    videoId: video.videoId,
+                    title: video.title,
+                    thumbnail: video.thumbnail,
+                    source: 'youtube',
+                  },
+                  video.channelTitle,
+                  'Official channel'
+                )
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+              {(catalog.trustedByGenre[activeSlug] ?? []).map((video) =>
+                renderCard(
+                  {
+                    videoId: video.videoId,
+                    title: video.title,
+                    thumbnail: video.thumbnail,
+                    source: 'youtube',
+                  },
+                  video.channelTitle,
+                  'Official channel'
                 )
               )}
             </div>

@@ -48,7 +48,7 @@ export function ArchiveMovieCard({
           )}
 
           <span className="absolute left-2 top-2 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
-            Archive
+            Public domain
           </span>
         </div>
 
@@ -56,7 +56,7 @@ export function ArchiveMovieCard({
           {movie.title}
         </h3>
         <p className="mt-1 text-xs text-[#b9aa98] truncate">
-          {movie.year ? `${movie.year} · Internet Archive` : 'Internet Archive'}
+          {movie.year ? `${movie.year} · Public domain` : 'Public domain'}
         </p>
       </button>
 

@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Bookmark, Play, Search, Users, X } from 'lucide-react';
 import { Sidebar, MobileBottomNav, NavSection } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
@@ -19,19 +19,27 @@ import { ModalMode, RoomModal, RoomVideoOption } from './components/RoomModal';
 import { WatchChoiceModal } from './components/WatchChoiceModal';
 import { ShareSheet } from './components/ShareSheet';
 import { UsernameModal, UsernameModalMode } from './components/UsernameModal';
+import { ArchiveMovieCard } from './components/ArchiveMovieCard';
 import { YouTubeMovieCard } from './components/YouTubeMovieCard';
 import { useLocalLists, useWatchLaterToast } from './hooks/useLocalLists';
 import { LIBRARY_VIDEOS } from './data/libraryVideos';
 import { FEATURED_VIDEOS } from './data/videos';
 import { ArchiveMovieItem, getArchiveThumbnail } from './lib/archive';
+import {
+  EMPTY_LEGAL_CATALOG,
+  LegalCatalogState,
+  loadAllLegalSources,
+  ourPickToYouTubeResult,
+  searchLegalCatalog,
+} from './lib/legalSources';
 import { WatchHistoryItem, WatchLaterItem } from './lib/localLists';
 import {
-  getHeroFeaturedMoviesFromCache,
-  getMoodVideosFromCache,
-  getTonightsPicksFromCache,
-  loadCachedMoodAndPickRows,
+  getHeroFeaturedMoviesFromCatalog,
+  getMoodVideosFromCatalog,
+  getTonightsPicksFromCatalog,
+  LegalPickItem,
   MoodId,
-  pickSurpriseFromCache,
+  pickSurpriseFromCatalog,
 } from './lib/moodCatalog';
 import {
   getArchiveWatchAloneLink,
@@ -39,7 +47,6 @@ import {
   ShareTarget,
 } from './lib/share';
 import {
-  fetchSharedLibrary,
   findRoomByCode,
   getMyUsername,
   getOrCreateDeviceId,
@@ -53,8 +60,6 @@ import {
 } from './lib/supabase';
 import {
   getYouTubeThumbnail,
-  hasYouTubeApiKey,
-  searchYouTubeWithCache,
   YouTubeSearchResult,
 } from './lib/youtube';
 
@@ -214,9 +219,12 @@ export default function App() {
   const userProfileRef = useRef<UserProfile | null>(null);
   userProfileRef.current = userProfile;
 
-  const [sharedLibrary, setSharedLibrary] = useState<SharedLibraryItem[]>([]);
-  const [libraryLoading, setLibraryLoading] = useState(true);
-  const libraryLoadedRef = useRef(false);
+  // 4 legal movie sources state (Trusted Channels, Creative Commons, Internet Archive, Our picks)
+  const [legalCatalog, setLegalCatalog] = useState<LegalCatalogState>(EMPTY_LEGAL_CATALOG);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [heroMoviesReady, setHeroMoviesReady] = useState(false);
+  const catalogLoadedRef = useRef(false);
+  const sharedLibrary = legalCatalog.ourPicks;
 
   // Live lobby online count (disabled when in Watch Alone solo mode)
   const [onlineCount, setOnlineCount] = useState<number>(1);
@@ -231,24 +239,21 @@ export default function App() {
   const [partyJoining, setPartyJoining] = useState(false);
   const [partyJoinError, setPartyJoinError] = useState('');
 
-  // See-all genre grid view and jump-to-genre state
+  // See-all genre grid view state
   const [seeAllData, setSeeAllData] = useState<SeeAllViewData | null>(null);
-  const [forceLoadSlug, setForceLoadSlug] = useState<string | null>(null);
 
-  // Cached genre rows and Tonight's picks for Home mood filters (zero extra YouTube searches)
-  const [cachedGenreVideos, setCachedGenreVideos] = useState<Record<string, YouTubeSearchResult[]>>({});
-  const [cachedFullMovies, setCachedFullMovies] = useState<YouTubeSearchResult[]>([]);
-  const [heroMoviesReady, setHeroMoviesReady] = useState(false);
+  // Home mood filters & Surprise Me pick
   const [selectedMood, setSelectedMood] = useState<MoodId | null>(null);
-  const [surpriseVideo, setSurpriseVideo] = useState<YouTubeSearchResult | null>(null);
-  const moodCacheLoadedRef = useRef(false);
+  const [surpriseItem, setSurpriseItem] = useState<LegalPickItem | null>(null);
 
-  // TopBar / Movies search state
+  // TopBar / Movies search state (searches strictly across the 4 legal sources)
   const [searchQuery, setSearchQuery] = useState('');
   const [moviesSearchInput, setMoviesSearchInput] = useState('');
   const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<YouTubeSearchResult[] | null>(null);
-  const [searchError, setSearchError] = useState(false);
+  const [searchResults, setSearchResults] = useState<{
+    youtube: YouTubeSearchResult[];
+    archive: ArchiveMovieItem[];
+  } | null>(null);
 
   const loadRoomByCode = async (code: string) => {
     const normalized = code.trim().toUpperCase();
@@ -306,7 +311,7 @@ export default function App() {
       if (initialRoomCode) {
         await loadRoomByCode(initialRoomCode);
       } else if (initialWatchId || initialArchiveId) {
-        setLibraryLoading(false);
+        setCatalogLoading(false);
       } else if (!restoredProfile) {
         // First visit on browse page: show "Choose your username" pop-up
         setUsernameModalDismissible(true);
@@ -352,34 +357,20 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Load shared library when not in Watch Alone solo mode (defers Supabase reads if opened directly with ?watch=)
+  // Load the 4 legal movie sources with automatic caching (24h Trusted Channels/Archive, 72h CC)
   useEffect(() => {
-    if (watchingVideo || libraryLoadedRef.current) return;
-    libraryLoadedRef.current = true;
-    setLibraryLoading(true);
-    fetchSharedLibrary().then(({ items }) => {
-      setSharedLibrary(items);
-      setLibraryLoading(false);
-    });
-  }, [watchingVideo]);
-
-  // Hydrate mood filter rows & Tonight's picks from Supabase search_cache (zero YouTube API quota calls)
-  useEffect(() => {
-    if (watchingVideo || moodCacheLoadedRef.current) return;
-    moodCacheLoadedRef.current = true;
-    void loadCachedMoodAndPickRows()
-      .then(({ bySlug, fullMovies }) => {
-        setCachedGenreVideos((prev) => ({ ...bySlug, ...prev }));
-        setCachedFullMovies(fullMovies);
+    if (watchingVideo || catalogLoadedRef.current) return;
+    catalogLoadedRef.current = true;
+    setCatalogLoading(true);
+    void loadAllLegalSources()
+      .then((loaded) => {
+        setLegalCatalog(loaded);
       })
       .finally(() => {
+        setCatalogLoading(false);
         setHeroMoviesReady(true);
       });
   }, [watchingVideo]);
-
-  const handleGenreVideosLoaded = useCallback((slug: string, videos: YouTubeSearchResult[]) => {
-    setCachedGenreVideos((prev) => ({ ...prev, [slug]: videos }));
-  }, []);
 
   // Join Supabase Realtime presence on channel "lobby" ONLY when on the home page
   const isHomePage =
@@ -609,9 +600,18 @@ export default function App() {
     }
   };
 
-  const openChoiceForSharedLibrary = (item: SharedLibraryItem) => {
+  const openChoiceForOurPick = (item: SharedLibraryItem) => {
     setChoiceVideo({
-      id: item.id,
+      id: item.video_id,
+      title: item.title,
+      thumbnail: getYouTubeThumbnail(item.video_id),
+      youtubeId: item.video_id,
+    });
+  };
+
+  const openCreateRoomFromOurPick = (item: SharedLibraryItem) => {
+    openCreateRoom({
+      id: item.video_id,
       title: item.title,
       thumbnail: getYouTubeThumbnail(item.video_id),
       youtubeId: item.video_id,
@@ -635,14 +635,6 @@ export default function App() {
       youtubeId: movie.identifier,
       source: 'archive',
     });
-  };
-
-  const handleSavedToLibrary = (item: SharedLibraryItem) => {
-    setSharedLibrary((prev) =>
-      prev.some((existing) => existing.id === item.id || existing.video_id === item.video_id)
-        ? prev
-        : [item, ...prev]
-    );
   };
 
   const handleEnterRoom = (rawRoom: RoomRecord) => {
@@ -726,7 +718,6 @@ export default function App() {
     setSearchQuery('');
     setMoviesSearchInput('');
     setSearchResults(null);
-    setSearchError(false);
     setActiveNav('home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -736,7 +727,6 @@ export default function App() {
     setSearchQuery('');
     setMoviesSearchInput('');
     setSearchResults(null);
-    setSearchError(false);
     setActiveNav(nav);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -746,12 +736,19 @@ export default function App() {
     setSearchQuery(query);
     setMoviesSearchInput(query);
     setSearching(true);
-    setSearchError(false);
 
-    const { results, error } = await searchYouTubeWithCache(query);
+    // Search strictly across our 4 legal movie sources
+    let catalogToSearch = legalCatalog;
+    if (!catalogLoadedRef.current) {
+      catalogLoadedRef.current = true;
+      catalogToSearch = await loadAllLegalSources();
+      setLegalCatalog(catalogToSearch);
+      setCatalogLoading(false);
+      setHeroMoviesReady(true);
+    }
+
+    setSearchResults(searchLegalCatalog(catalogToSearch, query));
     setSearching(false);
-    setSearchResults(results);
-    setSearchError(error && results.length === 0);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -766,12 +763,10 @@ export default function App() {
     setSearchQuery('');
     setMoviesSearchInput('');
     setSearchResults(null);
-    setSearchError(false);
   };
 
   const handleJumpToGenre = (genre: CategoryJumpTarget) => {
     setSeeAllData(null);
-    setForceLoadSlug(genre.slug);
     if (activeNav !== 'movies') {
       setActiveNav('movies');
     }
@@ -840,18 +835,21 @@ export default function App() {
     }, 80);
   };
 
-  const moodVideos =
+  const moodItems =
     selectedMood && selectedMood !== 'surprise'
-      ? getMoodVideosFromCache(selectedMood, cachedGenreVideos)
+      ? getMoodVideosFromCatalog(selectedMood, legalCatalog)
       : [];
-  const heroFeaturedMovies = getHeroFeaturedMoviesFromCache(cachedGenreVideos, cachedFullMovies);
-  const tonightsPicks = getTonightsPicksFromCache(cachedGenreVideos, cachedFullMovies);
+  const heroFeaturedMovies = getHeroFeaturedMoviesFromCatalog(legalCatalog);
+  const tonightsPicks = getTonightsPicksFromCatalog(legalCatalog);
+
+  const getCurrentSurpriseKey = (item: LegalPickItem | null) =>
+    item ? (item.kind === 'youtube' ? item.video.videoId : item.movie.identifier) : undefined;
 
   const handleSelectMood = (moodId: MoodId) => {
     if (moodId === 'surprise') {
       setSelectedMood('surprise');
-      setSurpriseVideo((current) =>
-        pickSurpriseFromCache(cachedGenreVideos, cachedFullMovies, current?.videoId)
+      setSurpriseItem((current) =>
+        pickSurpriseFromCatalog(legalCatalog, getCurrentSurpriseKey(current))
       );
       return;
     }
@@ -859,33 +857,56 @@ export default function App() {
   };
 
   const handleAnotherSurprise = () => {
-    setSurpriseVideo((current) =>
-      pickSurpriseFromCache(cachedGenreVideos, cachedFullMovies, current?.videoId)
+    setSurpriseItem((current) =>
+      pickSurpriseFromCatalog(legalCatalog, getCurrentSurpriseKey(current))
     );
   };
 
   const handleHeroWatchAlone = () => {
-    const featured = tonightsPicks[0];
-    if (featured) {
+    const firstPick = tonightsPicks[0];
+    if (firstPick?.kind === 'youtube') {
       enterWatchAlone({
-        id: featured.videoId,
-        title: featured.title,
-        category: featured.channelTitle || 'Movie',
-        youtubeId: featured.videoId,
-        thumbnail: featured.thumbnail,
+        id: firstPick.video.videoId,
+        title: firstPick.video.title,
+        category: firstPick.video.sourceLabel || firstPick.video.channelTitle || 'Movie',
+        youtubeId: firstPick.video.videoId,
+        thumbnail: firstPick.video.thumbnail,
+        duration: firstPick.video.duration,
       });
       return;
     }
-    const fallback = LIBRARY_VIDEOS[0];
-    enterWatchAlone({
-      id: fallback.id,
-      title: fallback.title,
-      category: fallback.category,
-      youtubeId: fallback.youtubeId,
-      thumbnail: fallback.thumbnail,
-      duration: fallback.duration,
-    });
+    if (firstPick?.kind === 'archive') {
+      enterWatchAlone({
+        id: firstPick.movie.identifier,
+        title: firstPick.movie.title,
+        category: 'Public domain',
+        youtubeId: firstPick.movie.identifier,
+        thumbnail: firstPick.movie.thumbnail,
+        source: 'archive',
+      });
+      return;
+    }
+    handleSelectNav('movies');
   };
+
+  // Related legal picks shown below the Watch Alone player
+  const relatedWatchables: WatchableVideo[] = watchingVideo
+    ? [
+        ...legalCatalog.ourPicks.map(ourPickToYouTubeResult),
+        ...legalCatalog.trustedVideos,
+        ...legalCatalog.creativeCommons,
+      ]
+        .filter((v) => v.videoId !== watchingVideo.youtubeId)
+        .slice(0, 4)
+        .map((v) => ({
+          id: v.videoId,
+          title: v.title,
+          category: v.sourceLabel || v.channelTitle,
+          youtubeId: v.videoId,
+          thumbnail: v.thumbnail,
+          duration: v.duration,
+        }))
+    : [];
 
   const isRoomView = Boolean(
     activeRoom && !roomLoading && !roomNotFoundCode && !roomLockedCode
@@ -1021,7 +1042,7 @@ export default function App() {
           ) : watchingVideo ? (
             <VideoPlayerPage
               video={watchingVideo}
-              relatedVideos={LIBRARY_VIDEOS.filter((v) => v.youtubeId !== watchingVideo.youtubeId)}
+              relatedVideos={relatedWatchables}
               onBack={handleGoHome}
               onShare={setShareTarget}
               onInviteFriends={(video, currentSeconds) =>
@@ -1038,16 +1059,7 @@ export default function App() {
                   currentSeconds
                 )
               }
-              onSelectSampleVideo={(sample) =>
-                enterWatchAlone({
-                  id: sample.id,
-                  title: sample.title,
-                  category: sample.category,
-                  youtubeId: sample.youtubeId,
-                  thumbnail: sample.thumbnail,
-                  duration: sample.duration,
-                })
-              }
+              onSelectRelatedVideo={enterWatchAlone}
             />
           ) : seeAllData ? (
             <GenreGridView
@@ -1056,19 +1068,21 @@ export default function App() {
               onWatchYouTube={openChoiceForSearch}
               onCreateRoomYouTube={openCreateRoomFromSearch}
               onShareYouTube={(video) => openShareForVideo(video.videoId, video.title)}
-              onSavedToLibrary={handleSavedToLibrary}
               onWatchArchive={openChoiceForArchive}
               onCreateRoomArchive={openCreateRoomFromArchive}
               onShareArchive={openShareForArchive}
+              onWatchOurPick={openChoiceForOurPick}
+              onCreateRoomOurPick={openCreateRoomFromOurPick}
+              onShareOurPick={(item) => openShareForVideo(item.video_id, item.title)}
             />
           ) : null}
 
           {showBrowseContent && (
             <>
-              {/* Search Results View (from TopBar or Movies search bar) */}
+              {/* Search Results View (from TopBar or Movies search bar — searches only the 4 legal sources) */}
               {searchQuery && (
                 <section
-                  aria-label="YouTube search results"
+                  aria-label="Legal movie search results"
                   className="px-4 py-6 sm:px-6 lg:px-8 border-b border-[#3a322a]"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1078,8 +1092,11 @@ export default function App() {
                       </h2>
                       {!searching && searchResults && (
                         <p className="mt-0.5 text-xs text-[#b9aa98]">
-                          {searchResults.length}{' '}
-                          {searchResults.length === 1 ? 'video' : 'videos'} found
+                          {searchResults.youtube.length + searchResults.archive.length}{' '}
+                          {searchResults.youtube.length + searchResults.archive.length === 1
+                            ? 'movie'
+                            : 'movies'}{' '}
+                          found
                         </p>
                       )}
                     </div>
@@ -1106,10 +1123,13 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                  ) : searchError ? (
+                  ) : searchResults &&
+                    searchResults.youtube.length === 0 &&
+                    searchResults.archive.length === 0 ? (
                     <div className="mt-5 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-6 text-center">
-                      <p className="text-sm font-medium text-[#f4ece1]">
-                        Search is resting, try again tomorrow, or paste a link
+                      <p className="text-sm text-[#b9aa98]">
+                        No movies in our legal sources matched &ldquo;{searchQuery}&rdquo;. Try
+                        another keyword or paste a YouTube link.
                       </p>
                       <button
                         type="button"
@@ -1119,23 +1139,24 @@ export default function App() {
                         Paste a YouTube link
                       </button>
                     </div>
-                  ) : searchResults && searchResults.length === 0 ? (
-                    <div className="mt-5 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-6 text-center">
-                      <p className="text-sm text-[#b9aa98]">
-                        No embeddable full-length movies matched &ldquo;{searchQuery}&rdquo;. Try
-                        another title or paste a YouTube link.
-                      </p>
-                    </div>
                   ) : searchResults ? (
                     <div className="mt-5 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
-                      {searchResults.map((video) => (
+                      {searchResults.youtube.map((video) => (
                         <YouTubeMovieCard
-                          key={video.videoId}
+                          key={`search-yt-${video.videoId}`}
                           video={video}
                           onWatch={openChoiceForSearch}
                           onCreateRoom={openCreateRoomFromSearch}
                           onShare={(v) => openShareForVideo(v.videoId, v.title)}
-                          onSavedToLibrary={handleSavedToLibrary}
+                        />
+                      ))}
+                      {searchResults.archive.map((movie) => (
+                        <ArchiveMovieCard
+                          key={`search-ar-${movie.identifier}`}
+                          movie={movie}
+                          onWatch={openChoiceForArchive}
+                          onCreateRoom={openCreateRoomFromArchive}
+                          onShare={openShareForArchive}
                         />
                       ))}
                     </div>
@@ -1234,7 +1255,6 @@ export default function App() {
                     variant="modal"
                     inputId="home-paste-youtube-input"
                     onCreateRoomWithVideo={openCreateRoomFromPasted}
-                    onSavedToLibrary={handleSavedToLibrary}
                   />
 
                   <div className="grid grid-cols-1 gap-6 border-t border-[#3a322a] pt-8 md:grid-cols-3">
@@ -1277,69 +1297,69 @@ export default function App() {
                         Movies
                       </h1>
                       <p className="mt-1 text-sm text-[#b9aa98]">
-                        Search full movies on YouTube or browse every genre below.
+                        Browse legal movies across curated picks, Creative Commons, and the Internet Archive.
                       </p>
                     </div>
 
-                    {hasYouTubeApiKey && (
-                      <form
-                        onSubmit={handleMoviesSearchFormSubmit}
-                        className="flex items-center gap-2 max-w-xl"
+                    <form
+                      onSubmit={handleMoviesSearchFormSubmit}
+                      className="flex items-center gap-2 max-w-xl"
+                    >
+                      <div className="relative flex-1">
+                        <Search
+                          className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
+                          aria-hidden="true"
+                        />
+                        <input
+                          type="search"
+                          value={moviesSearchInput}
+                          onChange={(e) => setMoviesSearchInput(e.target.value)}
+                          placeholder="Search movies..."
+                          aria-label="Search movies"
+                          className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
+                        />
+                        {(moviesSearchInput || searchQuery) && (
+                          <button
+                            type="button"
+                            onClick={handleClearSearch}
+                            aria-label="Clear search"
+                            className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
+                          >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={!moviesSearchInput.trim() || searching}
+                        className="min-h-[44px] rounded-full bg-[#f2a33a] px-5 py-2 text-sm font-bold text-[#1a1208] whitespace-nowrap shrink-0 transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
                       >
-                        <div className="relative flex-1">
-                          <Search
-                            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b9aa98]"
-                            aria-hidden="true"
-                          />
-                          <input
-                            type="search"
-                            value={moviesSearchInput}
-                            onChange={(e) => setMoviesSearchInput(e.target.value)}
-                            placeholder="Search full movies on YouTube..."
-                            aria-label="Search movies"
-                            className="w-full min-h-[44px] rounded-full border border-[#3a322a] bg-[#1e1a16] pl-10 pr-10 py-2 text-sm text-[#f4ece1] placeholder:text-[#b9aa98] focus:border-[#f2a33a] focus:outline-none"
-                          />
-                          {(moviesSearchInput || searchQuery) && (
-                            <button
-                              type="button"
-                              onClick={handleClearSearch}
-                              aria-label="Clear search"
-                              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-[#b9aa98] hover:text-[#f4ece1] active:bg-[#2a241e] cursor-pointer"
-                            >
-                              <X className="h-4 w-4" aria-hidden="true" />
-                            </button>
-                          )}
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={!moviesSearchInput.trim() || searching}
-                          className="min-h-[44px] rounded-full bg-[#f2a33a] px-5 py-2 text-sm font-bold text-[#1a1208] whitespace-nowrap shrink-0 transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-50 cursor-pointer"
-                        >
-                          {searching ? 'Searching...' : 'Search'}
-                        </button>
-                      </form>
-                    )}
+                        {searching ? 'Searching...' : 'Search'}
+                      </button>
+                    </form>
 
                     <PasteYouTubeBar
                       variant="home"
                       inputId="home-paste-youtube-input"
                       onCreateRoomWithVideo={openCreateRoomFromPasted}
-                      onSavedToLibrary={handleSavedToLibrary}
                     />
                   </section>
 
-                  <CategoryTiles onSelectGenre={handleJumpToGenre} />
+                  <CategoryTiles catalog={legalCatalog} onSelectGenre={handleJumpToGenre} />
 
                   <GenreRows
-                    forceLoadSlug={forceLoadSlug}
-                    libraryItems={sharedLibrary}
-                    libraryLoading={libraryLoading}
-                    onSeeAllGenre={(genre, videos) => {
+                    catalog={legalCatalog}
+                    catalogLoading={catalogLoading}
+                    onSeeAllYouTube={(genre, videos) => {
                       setSeeAllData({ kind: 'youtube', genre, videos });
                       window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
-                    onSeeAllArchiveGenre={(genre, movies) => {
+                    onSeeAllArchive={(genre, movies) => {
                       setSeeAllData({ kind: 'archive', genre, movies });
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    onSeeAllOurPicks={(items) => {
+                      setSeeAllData({ kind: 'our-picks', items });
                       window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     onWatchYouTube={openChoiceForSearch}
@@ -1348,10 +1368,9 @@ export default function App() {
                     onWatchArchive={openChoiceForArchive}
                     onCreateRoomArchive={openCreateRoomFromArchive}
                     onShareArchive={openShareForArchive}
-                    onSavedToLibrary={handleSavedToLibrary}
-                    onWatchLibraryItem={openChoiceForSharedLibrary}
-                    onShareLibraryItem={(item) => openShareForVideo(item.video_id, item.title)}
-                    onGenreVideosLoaded={handleGenreVideosLoaded}
+                    onWatchOurPick={openChoiceForOurPick}
+                    onCreateRoomOurPick={openCreateRoomFromOurPick}
+                    onShareOurPick={(item) => openShareForVideo(item.video_id, item.title)}
                   />
                 </>
               ) : (
@@ -1369,9 +1388,10 @@ export default function App() {
                       enterWatchAlone({
                         id: video.videoId,
                         title: video.title,
-                        category: video.channelTitle || 'Movie',
+                        category: video.sourceLabel || video.channelTitle || 'Movie',
                         youtubeId: video.videoId,
                         thumbnail: video.thumbnail,
+                        duration: video.duration,
                       })
                     }
                     onSelectMood={handleSelectMood}
@@ -1379,23 +1399,36 @@ export default function App() {
 
                   <HomeMoodResults
                     selectedMood={selectedMood}
-                    moodVideos={moodVideos}
-                    surpriseVideo={surpriseVideo}
+                    moodItems={moodItems}
+                    surpriseItem={surpriseItem}
                     onClose={() => setSelectedMood(null)}
                     onAnotherSurprise={handleAnotherSurprise}
-                    onWatchTogether={openCreateRoomFromSearch}
-                    onWatchAlone={(video) =>
+                    onWatchTogetherYouTube={openCreateRoomFromSearch}
+                    onWatchAloneYouTube={(video) =>
                       enterWatchAlone({
                         id: video.videoId,
                         title: video.title,
-                        category: video.channelTitle || 'Movie',
+                        category: video.sourceLabel || video.channelTitle || 'Movie',
                         youtubeId: video.videoId,
                         thumbnail: video.thumbnail,
+                        duration: video.duration,
                       })
                     }
-                    onWatchCardChoice={openChoiceForSearch}
-                    onShare={(v) => openShareForVideo(v.videoId, v.title)}
-                    onSavedToLibrary={handleSavedToLibrary}
+                    onWatchChoiceYouTube={openChoiceForSearch}
+                    onShareYouTube={(v) => openShareForVideo(v.videoId, v.title)}
+                    onWatchTogetherArchive={openCreateRoomFromArchive}
+                    onWatchAloneArchive={(movie) =>
+                      enterWatchAlone({
+                        id: movie.identifier,
+                        title: movie.title,
+                        category: 'Public domain',
+                        youtubeId: movie.identifier,
+                        thumbnail: movie.thumbnail,
+                        source: 'archive',
+                      })
+                    }
+                    onWatchChoiceArchive={openChoiceForArchive}
+                    onShareArchive={openShareForArchive}
                   />
 
                   <ContinueWatchingRow
@@ -1406,11 +1439,13 @@ export default function App() {
                   />
 
                   <TonightsPicksRow
-                    videos={tonightsPicks}
-                    onWatch={openChoiceForSearch}
-                    onCreateRoom={openCreateRoomFromSearch}
-                    onShare={(v) => openShareForVideo(v.videoId, v.title)}
-                    onSavedToLibrary={handleSavedToLibrary}
+                    items={tonightsPicks}
+                    onWatchYouTube={openChoiceForSearch}
+                    onCreateRoomYouTube={openCreateRoomFromSearch}
+                    onShareYouTube={(v) => openShareForVideo(v.videoId, v.title)}
+                    onWatchArchive={openChoiceForArchive}
+                    onCreateRoomArchive={openCreateRoomFromArchive}
+                    onShareArchive={openShareForArchive}
                     onBrowseAllMovies={() => handleSelectNav('movies')}
                   />
                 </>
@@ -1471,6 +1506,7 @@ export default function App() {
         initialVideo={selectedVideo}
         initialPositionSeconds={startSeconds}
         sharedLibrary={sharedLibrary}
+        legalCatalog={legalCatalog}
         onClose={() => setModalMode(null)}
         onOpenRoom={handleEnterRoom}
         onWatchAlone={(videoId, source) => {
@@ -1490,7 +1526,6 @@ export default function App() {
           enterWatchAlone(resolved);
         }}
         onShareRoom={setShareTarget}
-        onSavedToLibrary={handleSavedToLibrary}
       />
 
       <ShareSheet target={shareTarget} onClose={() => setShareTarget(null)} />

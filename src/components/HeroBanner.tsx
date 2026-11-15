@@ -690,6 +690,14 @@ export function HeroBanner({
                             ·
                           </span>
                           <span className="text-[#f4ece1]">{video.channelTitle || 'YouTube'}</span>
+                          {video.sourceLabel && (
+                            <>
+                              <span className="text-[#b9aa98]" aria-hidden="true">
+                                ·
+                              </span>
+                              <span className="text-[#b9aa98]">{video.sourceLabel}</span>
+                            </>
+                          )}
                         </p>
 
                         <div className="mt-5 flex flex-wrap items-center gap-2.5">

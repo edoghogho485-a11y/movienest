@@ -7,8 +7,10 @@ export const YOUTUBE_API_KEY =
 
 export const hasYouTubeApiKey = Boolean(YOUTUBE_API_KEY);
 
-// 72-hour freshness window for Supabase search_cache
-const CACHE_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+// 24-hour freshness window for Trusted Channels, 72-hour window for Creative Commons
+const CHANNEL_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const CC_CACHE_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+const MIN_FULL_MOVIE_SECONDS = 60 * 60; // 60 minutes
 
 export interface YouTubeSearchResult {
   videoId: string;
@@ -16,6 +18,10 @@ export interface YouTubeSearchResult {
   channelTitle: string;
   thumbnail: string;
   duration?: string;
+  durationSeconds?: number;
+  description?: string;
+  tags?: string[];
+  sourceLabel?: string;
 }
 
 export interface YTPlayer {
@@ -86,6 +92,28 @@ function decodeHtmlEntities(text: string): string {
   );
 }
 
+// Parse an ISO 8601 duration (e.g. "PT1H42M18S") into total seconds
+export function parseIsoDurationToSeconds(isoDuration?: string): number {
+  if (!isoDuration || typeof isoDuration !== 'string') return 0;
+  const match = isoDuration.trim().match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
+  if (!match) return 0;
+
+  const days = Number(match[1] ?? 0);
+  const hours = Number(match[2] ?? 0);
+  const minutes = Number(match[3] ?? 0);
+  const seconds = Number(match[4] ?? 0);
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+}
+
+export function formatDurationFromSeconds(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const hrs = Math.floor(safe / 3600);
+  const mins = Math.floor((safe % 3600) / 60);
+  const secs = safe % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return hrs > 0 ? `${hrs}:${pad(mins)}:${pad(secs)}` : `${mins}:${pad(secs)}`;
+}
+
 // Extract an 11-character YouTube video ID from youtube.com, m.youtube.com, or youtu.be URLs only
 export function extractYouTubeId(rawInput: string): string | null {
   const input = rawInput.trim();
@@ -153,20 +181,17 @@ export async function fetchYouTubeTitle(videoId: string): Promise<string> {
   }
 }
 
-// Search YouTube Data API v3 with 72-hour Supabase search_cache support
-export async function searchYouTubeWithCache(rawQuery: string): Promise<{
-  results: YouTubeSearchResult[];
-  fromCache: boolean;
-  error: boolean;
-}> {
-  const cleanQuery = rawQuery.trim();
-  if (!cleanQuery) {
-    return { results: [], fromCache: false, error: false };
+// Fetch public, embeddable 60+ minute movies from one trusted YouTube handle (never uses search.list).
+// Cached in Supabase search_cache under "channel:HANDLE" for 24 hours.
+export async function fetchTrustedChannelMoviesWithCache(
+  rawHandle: string
+): Promise<{ results: YouTubeSearchResult[]; error: boolean }> {
+  const cleanHandle = rawHandle.trim().replace(/^@+/, '');
+  if (!cleanHandle) {
+    return { results: [], error: false };
   }
 
-  const cacheKey = cleanQuery.toLowerCase();
-
-  // 1. Check Supabase search_cache first (72-hour freshness window)
+  const cacheKey = `channel:${cleanHandle.toLowerCase()}`;
   const cached = await getSearchCache<YouTubeSearchResult>(cacheKey);
   const cachedAgeMs = cached ? Date.now() - Date.parse(cached.fetched_at) : Infinity;
 
@@ -174,27 +199,217 @@ export async function searchYouTubeWithCache(rawQuery: string): Promise<{
     cached &&
     Array.isArray(cached.results) &&
     cachedAgeMs >= 0 &&
-    cachedAgeMs < CACHE_MAX_AGE_MS
+    cachedAgeMs < CHANNEL_CACHE_MAX_AGE_MS
   ) {
-    return { results: cached.results, fromCache: true, error: false };
+    return {
+      results: cached.results.map((item) => ({
+        ...item,
+        sourceLabel: 'Official channel',
+      })),
+      error: false,
+    };
   }
 
-  // 2. If no API key is configured, return any cached results if present
-  if (!YOUTUBE_API_KEY) {
+  const fallbackCached = () => {
     if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
-      return { results: cached.results, fromCache: true, error: false };
+      return {
+        results: cached.results.map((item) => ({
+          ...item,
+          sourceLabel: 'Official channel',
+        })),
+        error: false,
+      };
     }
-    return { results: [], fromCache: false, error: true };
+    return { results: [], error: true };
+  };
+
+  if (!YOUTUBE_API_KEY) {
+    return fallbackCached();
   }
 
-  // 3. Call YouTube Data API v3
+  try {
+    // 1. Resolve handle -> uploads playlist via channels.list
+    const channelParams = new URLSearchParams({
+      part: 'contentDetails',
+      forHandle: `@${cleanHandle}`,
+      key: YOUTUBE_API_KEY,
+    });
+    const channelRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/channels?${channelParams.toString()}`
+    );
+    if (!channelRes.ok) {
+      return fallbackCached();
+    }
+
+    const channelData = (await channelRes.json()) as {
+      items?: Array<{
+        contentDetails?: {
+          relatedPlaylists?: { uploads?: string };
+        };
+      }>;
+    };
+
+    const uploadsPlaylistId =
+      channelData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if (!uploadsPlaylistId) {
+      return fallbackCached();
+    }
+
+    // 2. Read the newest 50 uploads via playlistItems.list
+    const playlistParams = new URLSearchParams({
+      part: 'contentDetails',
+      playlistId: uploadsPlaylistId,
+      maxResults: '50',
+      key: YOUTUBE_API_KEY,
+    });
+    const playlistRes = await fetch(
+      `https://www.googleapis.com/youtube/v3/playlistItems?${playlistParams.toString()}`
+    );
+    if (!playlistRes.ok) {
+      return fallbackCached();
+    }
+
+    const playlistData = (await playlistRes.json()) as {
+      items?: Array<{
+        contentDetails?: { videoId?: string };
+      }>;
+    };
+
+    const videoIds = Array.from(
+      new Set(
+        (playlistData.items ?? [])
+          .map((item) => item.contentDetails?.videoId?.trim())
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+
+    if (videoIds.length === 0) {
+      await upsertSearchCache(cacheKey, []);
+      return { results: [], error: false };
+    }
+
+    // 3. Fetch status, contentDetails, and snippet in batches of 50 via videos.list
+    const collected: YouTubeSearchResult[] = [];
+
+    for (let i = 0; i < videoIds.length; i += 50) {
+      const batch = videoIds.slice(i, i + 50);
+      const videosParams = new URLSearchParams({
+        part: 'status,contentDetails,snippet',
+        id: batch.join(','),
+        key: YOUTUBE_API_KEY,
+      });
+
+      const videosRes = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?${videosParams.toString()}`
+      );
+      if (!videosRes.ok) {
+        return fallbackCached();
+      }
+
+      const videosData = (await videosRes.json()) as {
+        items?: Array<{
+          id?: string;
+          status?: {
+            privacyStatus?: string;
+            embeddable?: boolean;
+          };
+          contentDetails?: {
+            duration?: string;
+          };
+          snippet?: {
+            title?: string;
+            channelTitle?: string;
+            description?: string;
+            tags?: string[];
+          };
+        }>;
+      };
+
+      for (const item of videosData.items ?? []) {
+        const videoId = item.id?.trim();
+        if (!videoId) continue;
+
+        // Keep only public, embeddable videos that are at least 60 minutes long
+        const isPublic = item.status?.privacyStatus === 'public';
+        const isEmbeddable = item.status?.embeddable === true;
+        const durationSeconds = parseIsoDurationToSeconds(item.contentDetails?.duration);
+        if (!isPublic || !isEmbeddable || durationSeconds < MIN_FULL_MOVIE_SECONDS) {
+          continue;
+        }
+
+        collected.push({
+          videoId,
+          title: decodeHtmlEntities(item.snippet?.title ?? `YouTube Video (${videoId})`),
+          channelTitle: decodeHtmlEntities(item.snippet?.channelTitle ?? `@${cleanHandle}`),
+          thumbnail: getYouTubeThumbnail(videoId),
+          duration: formatDurationFromSeconds(durationSeconds),
+          durationSeconds,
+          description: item.snippet?.description
+            ? decodeHtmlEntities(item.snippet.description).slice(0, 1200)
+            : undefined,
+          tags: Array.isArray(item.snippet?.tags) ? item.snippet!.tags.slice(0, 30) : undefined,
+          sourceLabel: 'Official channel',
+        });
+      }
+    }
+
+    await upsertSearchCache(cacheKey, collected);
+    return { results: collected, error: false };
+  } catch {
+    return fallbackCached();
+  }
+}
+
+// One Creative Commons YouTube search cached in Supabase search_cache under "cc" for 72 hours
+export async function fetchCreativeCommonsMoviesWithCache(): Promise<{
+  results: YouTubeSearchResult[];
+  error: boolean;
+}> {
+  const cacheKey = 'cc';
+  const cached = await getSearchCache<YouTubeSearchResult>(cacheKey);
+  const cachedAgeMs = cached ? Date.now() - Date.parse(cached.fetched_at) : Infinity;
+
+  if (
+    cached &&
+    Array.isArray(cached.results) &&
+    cachedAgeMs >= 0 &&
+    cachedAgeMs < CC_CACHE_MAX_AGE_MS
+  ) {
+    return {
+      results: cached.results.map((item) => ({
+        ...item,
+        sourceLabel: 'Creative Commons',
+      })),
+      error: false,
+    };
+  }
+
+  const fallbackCached = () => {
+    if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
+      return {
+        results: cached.results.map((item) => ({
+          ...item,
+          sourceLabel: 'Creative Commons',
+        })),
+        error: false,
+      };
+    }
+    return { results: [], error: true };
+  };
+
+  if (!YOUTUBE_API_KEY) {
+    return fallbackCached();
+  }
+
   const params = new URLSearchParams({
     part: 'snippet',
     type: 'video',
+    videoLicense: 'creativeCommon',
     videoEmbeddable: 'true',
     videoDuration: 'long',
+    order: 'date',
     maxResults: '12',
-    q: cleanQuery,
+    q: 'full movie',
     key: YOUTUBE_API_KEY,
   });
 
@@ -202,13 +417,8 @@ export async function searchYouTubeWithCache(rawQuery: string): Promise<{
     const response = await fetch(
       `https://www.googleapis.com/youtube/v3/search?${params.toString()}`
     );
-
     if (!response.ok) {
-      // Quota exceeded or API error: fall back to stale cache if available
-      if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
-        return { results: cached.results, fromCache: true, error: false };
-      }
-      return { results: [], fromCache: false, error: true };
+      return fallbackCached();
     }
 
     const payload = (await response.json()) as {
@@ -217,10 +427,7 @@ export async function searchYouTubeWithCache(rawQuery: string): Promise<{
         snippet?: {
           title?: string;
           channelTitle?: string;
-          thumbnails?: {
-            high?: { url?: string };
-            medium?: { url?: string };
-          };
+          description?: string;
         };
       }>;
     };
@@ -232,20 +439,19 @@ export async function searchYouTubeWithCache(rawQuery: string): Promise<{
         return {
           videoId,
           title: decodeHtmlEntities(item.snippet?.title ?? `YouTube Video (${videoId})`),
-          channelTitle: decodeHtmlEntities(item.snippet?.channelTitle ?? 'YouTube'),
+          channelTitle: decodeHtmlEntities(item.snippet?.channelTitle ?? 'Creative Commons'),
           thumbnail: getYouTubeThumbnail(videoId),
+          description: item.snippet?.description
+            ? decodeHtmlEntities(item.snippet.description).slice(0, 600)
+            : undefined,
+          sourceLabel: 'Creative Commons',
         };
       });
 
-    // 4. Upsert fresh results into Supabase search_cache
     await upsertSearchCache(cacheKey, results);
-
-    return { results, fromCache: false, error: false };
+    return { results, error: false };
   } catch {
-    if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
-      return { results: cached.results, fromCache: true, error: false };
-    }
-    return { results: [], fromCache: false, error: true };
+    return fallbackCached();
   }
 }
 

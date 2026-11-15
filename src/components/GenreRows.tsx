@@ -1,315 +1,65 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronRight, Film, Share2 } from 'lucide-react';
-import { GENRE_LIST, GenreDefinition } from '../data/genres';
+import { useState } from 'react';
+import { ChevronRight, Film, Share2, Users } from 'lucide-react';
 import {
   ARCHIVE_GENRE_LIST,
   ArchiveGenreDefinition,
   ArchiveMovieItem,
-  searchArchiveWithCache,
 } from '../lib/archive';
 import {
-  SHARED_LIBRARY_CATEGORIES,
-  SharedLibraryItem,
-} from '../lib/supabase';
-import {
-  getYouTubeThumbnail,
-  searchYouTubeWithCache,
-  YouTubeSearchResult,
-} from '../lib/youtube';
+  LegalCatalogState,
+  TRUSTED_GENRE_DEFINITIONS,
+} from '../lib/legalSources';
+import { SharedLibraryItem } from '../lib/supabase';
+import { getYouTubeThumbnail, YouTubeSearchResult } from '../lib/youtube';
 import { ArchiveMovieCard } from './ArchiveMovieCard';
 import { BookmarkButton } from './BookmarkButton';
 import { YouTubeMovieCard } from './YouTubeMovieCard';
 
+export interface YouTubeRowMeta {
+  slug: string;
+  name: string;
+  sourceLabel?: string;
+}
+
 interface GenreRowsProps {
-  forceLoadSlug: string | null;
-  libraryItems: SharedLibraryItem[];
-  libraryLoading: boolean;
-  onSeeAllGenre: (genre: GenreDefinition, videos: YouTubeSearchResult[]) => void;
-  onSeeAllArchiveGenre: (
-    genre: ArchiveGenreDefinition,
-    movies: ArchiveMovieItem[]
-  ) => void;
+  catalog: LegalCatalogState;
+  catalogLoading: boolean;
+  onSeeAllYouTube: (meta: YouTubeRowMeta, videos: YouTubeSearchResult[]) => void;
+  onSeeAllArchive: (genre: ArchiveGenreDefinition, movies: ArchiveMovieItem[]) => void;
+  onSeeAllOurPicks: (items: SharedLibraryItem[]) => void;
   onWatchYouTube: (video: YouTubeSearchResult) => void;
   onCreateRoomYouTube: (video: YouTubeSearchResult) => void;
   onShareYouTube: (video: YouTubeSearchResult) => void;
   onWatchArchive: (movie: ArchiveMovieItem) => void;
   onCreateRoomArchive: (movie: ArchiveMovieItem) => void;
   onShareArchive: (movie: ArchiveMovieItem) => void;
-  onSavedToLibrary: (item: SharedLibraryItem) => void;
-  onWatchLibraryItem: (item: SharedLibraryItem) => void;
-  onShareLibraryItem: (item: SharedLibraryItem) => void;
-  onGenreVideosLoaded?: (slug: string, videos: YouTubeSearchResult[]) => void;
+  onWatchOurPick: (item: SharedLibraryItem) => void;
+  onCreateRoomOurPick: (item: SharedLibraryItem) => void;
+  onShareOurPick: (item: SharedLibraryItem) => void;
 }
 
-// Single lazy-loaded YouTube genre row (fetches only when scrolled into view or jumped to)
-function LazyGenreRow({
-  genre,
-  forceLoad,
-  onSeeAll,
-  onWatch,
-  onCreateRoom,
-  onShare,
-  onSavedToLibrary,
-  onLoaded,
-}: {
-  genre: GenreDefinition;
-  forceLoad: boolean;
-  onSeeAll: (genre: GenreDefinition, videos: YouTubeSearchResult[]) => void;
-  onWatch: (video: YouTubeSearchResult) => void;
-  onCreateRoom: (video: YouTubeSearchResult) => void;
-  onShare: (video: YouTubeSearchResult) => void;
-  onSavedToLibrary: (item: SharedLibraryItem) => void;
-  onLoaded?: (slug: string, videos: YouTubeSearchResult[]) => void;
-}) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(forceLoad);
-  const [loading, setLoading] = useState(false);
-  const [videos, setVideos] = useState<YouTubeSearchResult[] | null>(null);
-
-  useEffect(() => {
-    if (forceLoad) {
-      setShouldLoad(true);
-    }
-  }, [forceLoad]);
-
-  // Observe when row nears the viewport before querying Supabase cache / YouTube API
-  useEffect(() => {
-    if (shouldLoad) return;
-    const el = rowRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') {
-      setShouldLoad(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setShouldLoad(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '260px 0px' }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [shouldLoad]);
-
-  useEffect(() => {
-    if (!shouldLoad || videos !== null) return;
-
-    let cancelled = false;
-    setLoading(true);
-
-    searchYouTubeWithCache(genre.query).then(({ results }) => {
-      if (cancelled) return;
-      setVideos(results);
-      setLoading(false);
-      if (results.length > 0) {
-        onLoaded?.(genre.slug, results);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldLoad, videos, genre.query, genre.slug, onLoaded]);
-
-  // Hide row completely when API/quota fails and no cached data exists
-  if (videos !== null && videos.length === 0) {
-    return null;
-  }
-
-  return (
-    <div id={`genre-${genre.slug}`} ref={rowRef} className="scroll-mt-20">
-      <div className="flex items-center justify-between gap-4">
-        <h3 className="text-lg font-bold text-[#f4ece1]">
-          {genre.name}
-        </h3>
-
-        {videos && videos.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onSeeAll(genre, videos)}
-            className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <span>See all</span>
-            <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-          </button>
-        )}
-      </div>
-
-      {!shouldLoad || loading || videos === null ? (
-        <div className="mt-3 flex gap-3.5 overflow-hidden">
-          {[0, 1, 2, 3].map((slot) => (
-            <div
-              key={slot}
-              className="w-[260px] sm:w-[276px] shrink-0 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3"
-            >
-              <div className="aspect-video w-full rounded-xl bg-[#2a241e]" />
-              <div className="mt-3 h-4 w-3/4 rounded bg-[#2a241e]" />
-              <div className="mt-2 h-3 w-1/2 rounded bg-[#2a241e]" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
-          {videos.map((video) => (
-            <YouTubeMovieCard
-              key={`${genre.slug}-${video.videoId}`}
-              video={video}
-              defaultCategory={genre.defaultCategory}
-              className="w-[260px] sm:w-[276px] shrink-0 snap-start"
-              onWatch={onWatch}
-              onCreateRoom={onCreateRoom}
-              onShare={onShare}
-              onSavedToLibrary={onSavedToLibrary}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Single lazy-loaded Internet Archive genre row (no API key needed, cached 72h in search_cache)
-function LazyArchiveGenreRow({
-  genre,
-  forceLoad,
-  onSeeAll,
-  onWatch,
-  onCreateRoom,
-  onShare,
-}: {
-  genre: ArchiveGenreDefinition;
-  forceLoad: boolean;
-  onSeeAll: (genre: ArchiveGenreDefinition, movies: ArchiveMovieItem[]) => void;
-  onWatch: (movie: ArchiveMovieItem) => void;
-  onCreateRoom: (movie: ArchiveMovieItem) => void;
-  onShare: (movie: ArchiveMovieItem) => void;
-}) {
-  const rowRef = useRef<HTMLDivElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(forceLoad);
-  const [loading, setLoading] = useState(false);
-  const [movies, setMovies] = useState<ArchiveMovieItem[] | null>(null);
-
-  useEffect(() => {
-    if (forceLoad) {
-      setShouldLoad(true);
-    }
-  }, [forceLoad]);
-
-  useEffect(() => {
-    if (shouldLoad) return;
-    const el = rowRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') {
-      setShouldLoad(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setShouldLoad(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '260px 0px' }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [shouldLoad]);
-
-  useEffect(() => {
-    if (!shouldLoad || movies !== null) return;
-
-    let cancelled = false;
-    setLoading(true);
-
-    searchArchiveWithCache(genre.query, genre.slug).then(({ results }) => {
-      if (cancelled) return;
-      setMovies(results);
-      setLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [shouldLoad, movies, genre.query, genre.slug]);
-
-  if (movies !== null && movies.length === 0) {
-    return null;
-  }
-
-  return (
-    <div id={`genre-${genre.slug}`} ref={rowRef} className="scroll-mt-20">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <h3 className="text-lg font-bold text-[#f4ece1]">
-            {genre.name}
-          </h3>
-          <span className="text-xs font-medium text-[#b9aa98]">
-            · Archive
-          </span>
-        </div>
-
-        {movies && movies.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onSeeAll(genre, movies)}
-            className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <span>See all</span>
-            <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-          </button>
-        )}
-      </div>
-
-      {!shouldLoad || loading || movies === null ? (
-        <div className="mt-3 flex gap-3.5 overflow-hidden">
-          {[0, 1, 2, 3].map((slot) => (
-            <div
-              key={slot}
-              className="w-[260px] sm:w-[276px] shrink-0 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3"
-            >
-              <div className="aspect-video w-full rounded-xl bg-[#2a241e]" />
-              <div className="mt-3 h-4 w-3/4 rounded bg-[#2a241e]" />
-              <div className="mt-2 h-3 w-1/2 rounded bg-[#2a241e]" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
-          {movies.map((movie) => (
-            <ArchiveMovieCard
-              key={`${genre.slug}-${movie.identifier}`}
-              movie={movie}
-              className="w-[260px] sm:w-[276px] shrink-0 snap-start"
-              onWatch={onWatch}
-              onCreateRoom={onCreateRoom}
-              onShare={onShare}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SharedLibraryCard({
+// Card for an approved row from the Supabase "library" table ("Our picks")
+export function OurPickCard({
   item,
+  className = '',
   onWatch,
+  onCreateRoom,
   onShare,
 }: {
   item: SharedLibraryItem;
+  className?: string;
   onWatch: (item: SharedLibraryItem) => void;
+  onCreateRoom: (item: SharedLibraryItem) => void;
   onShare: (item: SharedLibraryItem) => void;
 }) {
   const [imgError, setImgError] = useState(false);
+  const thumbnail = getYouTubeThumbnail(item.video_id);
+  const creditLine = item.credit?.trim() || item.category;
 
   return (
-    <div className="w-[240px] sm:w-[260px] shrink-0 snap-start flex flex-col rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3 transition-colors hover:border-[#f2a33a]">
+    <article
+      className={`flex flex-col rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3 transition-colors hover:border-[#f2a33a] ${className}`}
+    >
       <button
         type="button"
         onClick={() => onWatch(item)}
@@ -318,7 +68,7 @@ function SharedLibraryCard({
         <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#14110f]">
           {!imgError ? (
             <img
-              src={getYouTubeThumbnail(item.video_id)}
+              src={thumbnail}
               alt={item.title}
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
@@ -332,109 +82,364 @@ function SharedLibraryCard({
               </span>
             </div>
           )}
+
+          <span className="absolute left-2 top-2 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
+            Our picks
+          </span>
         </div>
-        <h4 className="mt-2.5 text-sm font-bold text-[#f4ece1] line-clamp-1 group-hover:text-[#f2a33a] transition-colors">
+
+        <h3 className="mt-2.5 text-sm font-bold text-[#f4ece1] line-clamp-2 leading-snug group-hover:text-[#f2a33a] transition-colors">
           {item.title}
-        </h4>
+        </h3>
+        <p
+          className="mt-1 text-xs text-[#b9aa98] truncate"
+          title={item.permission_note || creditLine}
+        >
+          {creditLine}
+        </p>
       </button>
 
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <p className="text-xs text-[#b9aa98] truncate">{item.category}</p>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <BookmarkButton
-            source="youtube"
-            id={item.video_id}
-            title={item.title}
-            thumbnail={getYouTubeThumbnail(item.video_id)}
-          />
-          <button
-            type="button"
-            onClick={() => onShare(item)}
-            aria-label={`Share ${item.title}`}
-            className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
+      <div className="mt-auto pt-3 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onCreateRoom(item)}
+          className="inline-flex min-h-[44px] flex-1 min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-3 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
+        >
+          <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>Room</span>
+        </button>
+
+        <BookmarkButton
+          source="youtube"
+          id={item.video_id}
+          title={item.title}
+          thumbnail={thumbnail}
+        />
+
+        <button
+          type="button"
+          onClick={() => onShare(item)}
+          aria-label={`Share ${item.title}`}
+          className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
+        >
+          <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function RowSkeleton({ title }: { title: string }) {
+  return (
+    <div>
+      <h3 className="text-lg font-bold text-[#f4ece1]">{title}</h3>
+      <div className="mt-3 flex gap-3.5 overflow-hidden">
+        {[0, 1, 2, 3].map((slot) => (
+          <div
+            key={slot}
+            className="w-[260px] sm:w-[276px] shrink-0 rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3"
           >
-            <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-          </button>
-        </div>
+            <div className="aspect-video w-full rounded-xl bg-[#2a241e]" />
+            <div className="mt-3 h-4 w-3/4 rounded bg-[#2a241e]" />
+            <div className="mt-2 h-3 w-1/2 rounded bg-[#2a241e]" />
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
 export function GenreRows({
-  forceLoadSlug,
-  libraryItems,
-  libraryLoading,
-  onSeeAllGenre,
-  onSeeAllArchiveGenre,
+  catalog,
+  catalogLoading,
+  onSeeAllYouTube,
+  onSeeAllArchive,
+  onSeeAllOurPicks,
   onWatchYouTube,
   onCreateRoomYouTube,
   onShareYouTube,
   onWatchArchive,
   onCreateRoomArchive,
   onShareArchive,
-  onSavedToLibrary,
-  onWatchLibraryItem,
-  onShareLibraryItem,
-  onGenreVideosLoaded,
+  onWatchOurPick,
+  onCreateRoomOurPick,
+  onShareOurPick,
 }: GenreRowsProps) {
-  const nonEmptyLibraryCategories = SHARED_LIBRARY_CATEGORIES.map((category) => ({
-    category,
-    items: libraryItems.filter((item) => item.category === category),
-  })).filter((group) => group.items.length > 0);
+  if (catalogLoading) {
+    return (
+      <section aria-label="Loading movies" className="space-y-8 px-4 py-4 sm:px-6 lg:px-8">
+        <RowSkeleton title="Our picks" />
+        <RowSkeleton title="Recently added" />
+        <RowSkeleton title="Classics" />
+      </section>
+    );
+  }
+
+  // Build non-empty Trusted Channel genre rows (hidden automatically when trustedChannels is empty)
+  const nonEmptyTrustedGenres = TRUSTED_GENRE_DEFINITIONS.map((genre) => ({
+    genre,
+    videos: catalog.trustedByGenre[genre.slug] ?? [],
+  })).filter((entry) => entry.videos.length > 0);
+
+  // Any trusted-channel videos that did not match a genre keyword stay discoverable in Official channels
+  const matchedIds = new Set(
+    nonEmptyTrustedGenres.flatMap((entry) => entry.videos.map((v) => v.videoId))
+  );
+  const unmatchedTrusted = catalog.trustedVideos.filter((v) => !matchedIds.has(v.videoId));
+
+  const archiveNewDef = ARCHIVE_GENRE_LIST[0];
+  const archiveClassicsDef = ARCHIVE_GENRE_LIST[1];
+
+  const hasAnyRows =
+    nonEmptyTrustedGenres.length > 0 ||
+    unmatchedTrusted.length > 0 ||
+    catalog.ourPicks.length > 0 ||
+    catalog.creativeCommons.length > 0 ||
+    catalog.archiveNew.length > 0 ||
+    catalog.archiveClassics.length > 0;
+
+  if (!hasAnyRows) {
+    return (
+      <section className="px-4 py-8 sm:px-6 lg:px-8">
+        <div className="rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-6 text-center">
+          <p className="text-sm font-medium text-[#f4ece1]">
+            No movies are loaded right now.
+          </p>
+          <p className="mt-1 text-xs text-[#b9aa98]">
+            Paste any YouTube link above to start watching right away.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section
-      aria-label="Browse movies by genre"
+      aria-label="Browse legal movie sources"
       className="space-y-8 px-4 py-4 sm:px-6 lg:px-8"
     >
-      {/* YouTube genre rows */}
-      {GENRE_LIST.map((genre) => (
-        <LazyGenreRow
-          key={genre.slug}
-          genre={genre}
-          forceLoad={forceLoadSlug === genre.slug}
-          onSeeAll={onSeeAllGenre}
-          onWatch={onWatchYouTube}
-          onCreateRoom={onCreateRoomYouTube}
-          onShare={onShareYouTube}
-          onSavedToLibrary={onSavedToLibrary}
-          onLoaded={onGenreVideosLoaded}
-        />
-      ))}
+      {/* 1. Trusted Channel genre rows (empty rows & empty source automatically hidden) */}
+      {nonEmptyTrustedGenres.map(({ genre, videos }) => (
+        <div key={genre.slug} id={`genre-${genre.slug}`} className="scroll-mt-20">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-bold text-[#f4ece1]">{genre.name}</h3>
 
-      {/* 5 Internet Archive Classic Movie rows (no API key needed) */}
-      {ARCHIVE_GENRE_LIST.map((genre) => (
-        <LazyArchiveGenreRow
-          key={genre.slug}
-          genre={genre}
-          forceLoad={forceLoadSlug === genre.slug}
-          onSeeAll={onSeeAllArchiveGenre}
-          onWatch={onWatchArchive}
-          onCreateRoom={onCreateRoomArchive}
-          onShare={onShareArchive}
-        />
-      ))}
-
-      {/* Non-empty Shared Library rows */}
-      {!libraryLoading &&
-        nonEmptyLibraryCategories.map((group) => (
-          <div key={group.category}>
-            <h3 className="text-lg font-bold text-[#f4ece1]">
-              Saved · {group.category}
-            </h3>
-            <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
-              {group.items.map((item) => (
-                <SharedLibraryCard
-                  key={item.id}
-                  item={item}
-                  onWatch={onWatchLibraryItem}
-                  onShare={onShareLibraryItem}
-                />
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() =>
+                onSeeAllYouTube(
+                  { slug: genre.slug, name: genre.name, sourceLabel: 'Official channel' },
+                  videos
+                )
+              }
+              className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <span>See all</span>
+              <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+            </button>
           </div>
-        ))}
+
+          <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+            {videos.map((video) => (
+              <YouTubeMovieCard
+                key={`${genre.slug}-${video.videoId}`}
+                video={video}
+                sourceLabel="Official channel"
+                className="w-[260px] sm:w-[276px] shrink-0 snap-start"
+                onWatch={onWatchYouTube}
+                onCreateRoom={onCreateRoomYouTube}
+                onShare={onShareYouTube}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {unmatchedTrusted.length > 0 && (
+        <div id="genre-official-channels" className="scroll-mt-20">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-bold text-[#f4ece1]">Official channels</h3>
+            <button
+              type="button"
+              onClick={() =>
+                onSeeAllYouTube(
+                  {
+                    slug: 'official-channels',
+                    name: 'Official channels',
+                    sourceLabel: 'Official channel',
+                  },
+                  unmatchedTrusted
+                )
+              }
+              className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <span>See all</span>
+              <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+            {unmatchedTrusted.map((video) => (
+              <YouTubeMovieCard
+                key={`official-${video.videoId}`}
+                video={video}
+                sourceLabel="Official channel"
+                className="w-[260px] sm:w-[276px] shrink-0 snap-start"
+                onWatch={onWatchYouTube}
+                onCreateRoom={onCreateRoomYouTube}
+                onShare={onShareYouTube}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Our picks (approved rows from Supabase "library" table) */}
+      {catalog.ourPicks.length > 0 && (
+        <div id="genre-our-picks" className="scroll-mt-20">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-bold text-[#f4ece1]">Our picks</h3>
+
+            <button
+              type="button"
+              onClick={() => onSeeAllOurPicks(catalog.ourPicks)}
+              className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <span>See all</span>
+              <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+            {catalog.ourPicks.map((item) => (
+              <OurPickCard
+                key={`our-pick-${item.video_id}`}
+                item={item}
+                className="w-[260px] sm:w-[276px] shrink-0 snap-start"
+                onWatch={onWatchOurPick}
+                onCreateRoom={onCreateRoomOurPick}
+                onShare={onShareOurPick}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3. Creative Commons (one YouTube CC search cached 72h under "cc") */}
+      {catalog.creativeCommons.length > 0 && (
+        <div id="genre-creative-commons" className="scroll-mt-20">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-bold text-[#f4ece1]">Creative Commons</h3>
+
+            <button
+              type="button"
+              onClick={() =>
+                onSeeAllYouTube(
+                  {
+                    slug: 'creative-commons',
+                    name: 'Creative Commons',
+                    sourceLabel: 'Creative Commons',
+                  },
+                  catalog.creativeCommons
+                )
+              }
+              className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <span>See all</span>
+              <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+            {catalog.creativeCommons.map((video) => (
+              <YouTubeMovieCard
+                key={`cc-${video.videoId}`}
+                video={video}
+                sourceLabel="Creative Commons"
+                className="w-[260px] sm:w-[276px] shrink-0 snap-start"
+                onWatch={onWatchYouTube}
+                onCreateRoom={onCreateRoomYouTube}
+                onShare={onShareYouTube}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 4. Internet Archive: Recently added & Classics (labeled "Public domain") */}
+      {catalog.archiveNew.length > 0 && (
+        <div id={`genre-${archiveNewDef.slug}`} className="scroll-mt-20">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <h3 className="text-lg font-bold text-[#f4ece1]">
+                {archiveNewDef.name}
+              </h3>
+              <span className="text-xs font-medium text-[#b9aa98]">
+                · Public domain
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onSeeAllArchive(archiveNewDef, catalog.archiveNew)}
+              className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <span>See all</span>
+              <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+            {catalog.archiveNew.map((movie) => (
+              <ArchiveMovieCard
+                key={`${archiveNewDef.slug}-${movie.identifier}`}
+                movie={movie}
+                className="w-[260px] sm:w-[276px] shrink-0 snap-start"
+                onWatch={onWatchArchive}
+                onCreateRoom={onCreateRoomArchive}
+                onShare={onShareArchive}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {catalog.archiveClassics.length > 0 && (
+        <div id={`genre-${archiveClassicsDef.slug}`} className="scroll-mt-20">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <h3 className="text-lg font-bold text-[#f4ece1]">
+                {archiveClassicsDef.name}
+              </h3>
+              <span className="text-xs font-medium text-[#b9aa98]">
+                · Public domain
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onSeeAllArchive(archiveClassicsDef, catalog.archiveClassics)}
+              className="inline-flex min-h-[44px] items-center gap-1 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 text-xs font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <span>See all</span>
+              <ChevronRight className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-3.5 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
+            {catalog.archiveClassics.map((movie) => (
+              <ArchiveMovieCard
+                key={`${archiveClassicsDef.slug}-${movie.identifier}`}
+                movie={movie}
+                className="w-[260px] sm:w-[276px] shrink-0 snap-start"
+                onWatch={onWatchArchive}
+                onCreateRoom={onCreateRoomArchive}
+                onShare={onShareArchive}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

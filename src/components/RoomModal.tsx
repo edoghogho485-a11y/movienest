@@ -1,9 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { ArrowRight, Check, Copy, Play, Share2, Users, X } from 'lucide-react';
-import { FEATURED_VIDEOS } from '../data/videos';
-import { LIBRARY_VIDEOS } from '../data/libraryVideos';
 import { copyTextToClipboard, ShareTarget } from '../lib/share';
 import { fetchArchiveMovieDetails, isValidArchiveDownloadUrl } from '../lib/archive';
+import { EMPTY_LEGAL_CATALOG, LegalCatalogState } from '../lib/legalSources';
 import {
   createRoomInSupabase,
   findRoomByCode,
@@ -34,11 +33,11 @@ interface RoomModalProps {
   initialVideo: RoomVideoOption | null;
   initialPositionSeconds?: number;
   sharedLibrary: SharedLibraryItem[];
+  legalCatalog?: LegalCatalogState;
   onClose: () => void;
   onOpenRoom: (room: RoomRecord) => void;
   onWatchAlone: (videoId: string, source?: 'youtube' | 'archive') => void;
   onShareRoom: (target: ShareTarget) => void;
-  onSavedToLibrary: (item: SharedLibraryItem) => void;
 }
 
 const EMPTY_LIBRARY: SharedLibraryItem[] = [];
@@ -64,16 +63,22 @@ export function RoomModal({
   initialVideo,
   initialPositionSeconds = 0,
   sharedLibrary,
+  legalCatalog = EMPTY_LEGAL_CATALOG,
   onClose,
   onOpenRoom,
   onWatchAlone,
   onShareRoom,
-  onSavedToLibrary,
 }: RoomModalProps) {
   const safeLibrary = Array.isArray(sharedLibrary) ? sharedLibrary : EMPTY_LIBRARY;
   const [roomName, setRoomName] = useState('Friday Movie Night');
   const [selectedVideoId, setSelectedVideoId] = useState(
-    initialVideo?.youtubeId ?? initialVideo?.id ?? LIBRARY_VIDEOS[0]?.youtubeId ?? ''
+    initialVideo?.youtubeId ??
+      initialVideo?.id ??
+      safeLibrary[0]?.video_id ??
+      legalCatalog.trustedVideos[0]?.videoId ??
+      legalCatalog.creativeCommons[0]?.videoId ??
+      legalCatalog.archiveClassics[0]?.identifier ??
+      ''
   );
   const [joinCode, setJoinCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -89,11 +94,15 @@ export function RoomModal({
         setSelectedVideoId(initialVideo.youtubeId ?? initialVideo.id);
       } else {
         setSelectedVideoId(
-          safeLibrary[0]?.video_id ?? LIBRARY_VIDEOS[0]?.youtubeId ?? ''
+          safeLibrary[0]?.video_id ??
+            legalCatalog.trustedVideos[0]?.videoId ??
+            legalCatalog.creativeCommons[0]?.videoId ??
+            legalCatalog.archiveClassics[0]?.identifier ??
+            ''
         );
       }
     }
-  }, [mode, initialVideo, safeLibrary]);
+  }, [mode, initialVideo, safeLibrary, legalCatalog]);
 
   useEffect(() => {
     if (!mode) {
@@ -125,15 +134,28 @@ export function RoomModal({
     }
     const fromShared = safeLibrary.find((i) => i.video_id === videoIdToLookup);
     if (fromShared) return fromShared.title;
-    const fromLib = LIBRARY_VIDEOS.find(
-      (v) => v.youtubeId === videoIdToLookup || v.id === videoIdToLookup
-    );
-    if (fromLib) return fromLib.title;
-    const fromFeat = FEATURED_VIDEOS.find(
-      (v) => v.youtubeId === videoIdToLookup || v.id === videoIdToLookup
-    );
-    if (fromFeat) return fromFeat.title;
+    const fromTrusted = legalCatalog.trustedVideos.find((v) => v.videoId === videoIdToLookup);
+    if (fromTrusted) return fromTrusted.title;
+    const fromCc = legalCatalog.creativeCommons.find((v) => v.videoId === videoIdToLookup);
+    if (fromCc) return fromCc.title;
+    const fromArchive =
+      legalCatalog.archiveClassics.find((m) => m.identifier === videoIdToLookup) ??
+      legalCatalog.archiveNew.find((m) => m.identifier === videoIdToLookup);
+    if (fromArchive) return fromArchive.title;
     return roomName.trim() || 'Movie Night';
+  };
+
+  const resolveSelectedSource = (videoIdToLookup: string): 'youtube' | 'archive' => {
+    if (
+      initialVideo &&
+      (initialVideo.youtubeId === videoIdToLookup || initialVideo.id === videoIdToLookup)
+    ) {
+      return initialVideo.source === 'archive' ? 'archive' : 'youtube';
+    }
+    const isArchive =
+      legalCatalog.archiveClassics.some((m) => m.identifier === videoIdToLookup) ||
+      legalCatalog.archiveNew.some((m) => m.identifier === videoIdToLookup);
+    return isArchive ? 'archive' : 'youtube';
   };
 
   const createRoomForVideoId = async (
@@ -156,7 +178,7 @@ export function RoomModal({
       initialVideo &&
       (initialVideo.youtubeId === videoIdToSave || initialVideo.id === videoIdToSave);
     const resolvedSource: 'youtube' | 'archive' =
-      overrideSource ?? (isSelectedInitial ? initialVideo?.source ?? 'youtube' : 'youtube');
+      overrideSource ?? resolveSelectedSource(videoIdToSave);
 
     let resolvedVideoUrl: string | null =
       overrideVideoUrl ?? (isSelectedInitial ? initialVideo?.videoUrl ?? null : null);
@@ -272,12 +294,10 @@ export function RoomModal({
   // Check if selectedVideoId is already represented in one of the dropdown lists
   const isKnownDropdownOption =
     safeLibrary.some((item) => item.video_id === selectedVideoId) ||
-    LIBRARY_VIDEOS.some(
-      (v) => v.id === selectedVideoId || v.youtubeId === selectedVideoId
-    ) ||
-    FEATURED_VIDEOS.some(
-      (v) => v.id === selectedVideoId || v.youtubeId === selectedVideoId
-    );
+    legalCatalog.trustedVideos.some((v) => v.videoId === selectedVideoId) ||
+    legalCatalog.creativeCommons.some((v) => v.videoId === selectedVideoId) ||
+    legalCatalog.archiveClassics.some((m) => m.identifier === selectedVideoId) ||
+    legalCatalog.archiveNew.some((m) => m.identifier === selectedVideoId);
 
   return (
     <div
@@ -428,28 +448,41 @@ export function RoomModal({
                     </optgroup>
                   )}
                   {safeLibrary.length > 0 && (
-                    <optgroup label="Shared Library">
+                    <optgroup label="Our picks">
                       {safeLibrary.map((item) => (
-                        <option key={item.id} value={item.video_id}>
-                          {item.title} ({item.category})
+                        <option key={item.video_id} value={item.video_id}>
+                          {item.title} ({item.credit || item.category})
                         </option>
                       ))}
                     </optgroup>
                   )}
-                  <optgroup label="Open Movies">
-                    {LIBRARY_VIDEOS.map((video) => (
-                      <option key={video.id} value={video.youtubeId}>
-                        {video.title} ({video.category})
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Featured Picks">
-                    {FEATURED_VIDEOS.map((video) => (
-                      <option key={video.id} value={video.youtubeId}>
-                        {video.title} ({video.genre})
-                      </option>
-                    ))}
-                  </optgroup>
+                  {legalCatalog.trustedVideos.length > 0 && (
+                    <optgroup label="Official channels">
+                      {legalCatalog.trustedVideos.map((video) => (
+                        <option key={video.videoId} value={video.videoId}>
+                          {video.title} ({video.channelTitle})
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {legalCatalog.creativeCommons.length > 0 && (
+                    <optgroup label="Creative Commons">
+                      {legalCatalog.creativeCommons.map((video) => (
+                        <option key={video.videoId} value={video.videoId}>
+                          {video.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {legalCatalog.archiveClassics.length > 0 && (
+                    <optgroup label="Public domain · Classics">
+                      {legalCatalog.archiveClassics.slice(0, 12).map((movie) => (
+                        <option key={movie.identifier} value={movie.identifier}>
+                          {movie.title} {movie.year ? `(${movie.year})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 
@@ -462,17 +495,11 @@ export function RoomModal({
               <div className="flex flex-col-reverse gap-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
-                  onClick={() => {
-                    const isSelectedInitial =
-                      initialVideo &&
-                      (initialVideo.youtubeId === selectedVideoId ||
-                        initialVideo.id === selectedVideoId);
-                    onWatchAlone(
-                      selectedVideoId,
-                      isSelectedInitial ? initialVideo?.source : 'youtube'
-                    );
-                  }}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
+                  disabled={!selectedVideoId}
+                  onClick={() =>
+                    onWatchAlone(selectedVideoId, resolveSelectedSource(selectedVideoId))
+                  }
+                  className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#14110f] px-4 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] disabled:opacity-50 cursor-pointer"
                 >
                   <Play className="h-4 w-4 text-[#f2a33a] fill-current" aria-hidden="true" />
                   <span>Watch Alone instead</span>
@@ -488,7 +515,7 @@ export function RoomModal({
                   </button>
                   <button
                     type="submit"
-                    disabled={submitting}
+                    disabled={submitting || !selectedVideoId}
                     className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full bg-[#f2a33a] px-5 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] disabled:opacity-60 cursor-pointer"
                   >
                     <Users className="h-4 w-4" aria-hidden="true" />
@@ -503,10 +530,6 @@ export function RoomModal({
               variant="modal"
               inputId="modal-paste-youtube-input"
               onCreateRoomWithVideo={handleCreateWithPastedYouTube}
-              onSavedToLibrary={(savedItem) => {
-                onSavedToLibrary(savedItem);
-                setSelectedVideoId(savedItem.video_id);
-              }}
             />
           </div>
         ) : (

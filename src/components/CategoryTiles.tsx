@@ -1,8 +1,7 @@
 import {
+  Clock,
   Clapperboard,
-  Compass,
   Drama,
-  Droplets,
   Film,
   Flame,
   Ghost,
@@ -10,40 +9,27 @@ import {
   Heart,
   Laugh,
   Rocket,
-  Shield,
   Sparkles,
   Users,
-  Wand2,
   Zap,
 } from 'lucide-react';
-import { ARCHIVE_GENRE_LIST } from '../lib/archive';
-import { GENRE_LIST, GenreDefinition, GenreIconKey } from '../data/genres';
+import { LegalCatalogState, TRUSTED_GENRE_DEFINITIONS } from '../lib/legalSources';
 
-const ICON_MAP: Record<GenreIconKey, typeof Film> = {
-  film: Film,
-  sparkles: Sparkles,
-  laugh: Laugh,
-  heart: Heart,
-  flame: Flame,
+const SLUG_ICON_MAP: Record<string, typeof Film> = {
+  nollywood: Film,
+  action: Flame,
+  thriller: Zap,
+  comedy: Laugh,
   drama: Drama,
-  droplets: Droplets,
-  rocket: Rocket,
-  ghost: Ghost,
-  zap: Zap,
-  shield: Shield,
-  wand: Wand2,
-  compass: Compass,
-  users: Users,
-  clapperboard: Clapperboard,
-  globe: Globe,
-};
-
-const ARCHIVE_ICON_MAP: Record<string, typeof Film> = {
-  'classic-movies': Film,
-  'sci-fi-classics': Rocket,
-  'horror-classics': Ghost,
-  'comedy-classics': Laugh,
-  cartoons: Clapperboard,
+  romance: Heart,
+  horror: Ghost,
+  'sci-fi': Rocket,
+  family: Users,
+  'official-channels': Clapperboard,
+  'our-picks': Sparkles,
+  'creative-commons': Globe,
+  'archive-new': Clock,
+  'archive-classics': Film,
 };
 
 export interface CategoryJumpTarget {
@@ -52,23 +38,56 @@ export interface CategoryJumpTarget {
 }
 
 interface CategoryTilesProps {
+  catalog: LegalCatalogState;
   onSelectGenre: (genre: CategoryJumpTarget) => void;
 }
 
-export function CategoryTiles({ onSelectGenre }: CategoryTilesProps) {
-  const allCategories: Array<{ slug: string; name: string; icon: typeof Film; badge?: string }> = [
-    ...GENRE_LIST.map((g: GenreDefinition) => ({
-      slug: g.slug,
-      name: g.name,
-      icon: ICON_MAP[g.icon],
-    })),
-    ...ARCHIVE_GENRE_LIST.map((g) => ({
-      slug: g.slug,
-      name: g.name,
-      icon: ARCHIVE_ICON_MAP[g.slug] ?? Film,
-      badge: 'Archive',
-    })),
-  ];
+export function CategoryTiles({ catalog, onSelectGenre }: CategoryTilesProps) {
+  const categories: Array<{ slug: string; name: string; icon: typeof Film }> = [];
+
+  for (const genre of TRUSTED_GENRE_DEFINITIONS) {
+    if ((catalog.trustedByGenre[genre.slug]?.length ?? 0) > 0) {
+      categories.push({
+        slug: genre.slug,
+        name: genre.name,
+        icon: SLUG_ICON_MAP[genre.slug] ?? Film,
+      });
+    }
+  }
+
+  if (catalog.ourPicks.length > 0) {
+    categories.push({
+      slug: 'our-picks',
+      name: 'Our picks',
+      icon: SLUG_ICON_MAP['our-picks'],
+    });
+  }
+
+  if (catalog.creativeCommons.length > 0) {
+    categories.push({
+      slug: 'creative-commons',
+      name: 'Creative Commons',
+      icon: SLUG_ICON_MAP['creative-commons'],
+    });
+  }
+
+  if (catalog.archiveNew.length > 0) {
+    categories.push({
+      slug: 'archive-new',
+      name: 'Recently added',
+      icon: SLUG_ICON_MAP['archive-new'],
+    });
+  }
+
+  if (catalog.archiveClassics.length > 0) {
+    categories.push({
+      slug: 'archive-classics',
+      name: 'Classics',
+      icon: SLUG_ICON_MAP['archive-classics'],
+    });
+  }
+
+  if (categories.length === 0) return null;
 
   return (
     <section
@@ -82,12 +101,12 @@ export function CategoryTiles({ onSelectGenre }: CategoryTilesProps) {
         >
           Browse by Category
         </h2>
-        <span className="text-xs text-[#b9aa98]">Jump to a genre</span>
+        <span className="text-xs text-[#b9aa98]">Jump to a row</span>
       </div>
 
       {/* Flat solid cards: 2 columns on phones, 4 to 6 columns on laptops */}
       <div className="mt-3.5 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
-        {allCategories.map((category) => {
+        {categories.map((category) => {
           const Icon = category.icon;
           return (
             <button

@@ -1,8 +1,10 @@
-// Mood filtering, Tonight's picks hydration, and non-repeating Surprise Me helpers (zero extra YouTube searches)
-import { GENRE_LIST } from '../data/genres';
-import { LIBRARY_VIDEOS } from '../data/libraryVideos';
-import { FEATURED_VIDEOS } from '../data/videos';
-import { getSearchCache } from './supabase';
+// Home mood filtering, Tonight's picks, Hero featured slides, and non-repeating Surprise Me
+// Built strictly from MovieNest's 4 legal sources (zero outside sources)
+import { ArchiveMovieItem } from './archive';
+import {
+  LegalCatalogState,
+  ourPickToYouTubeResult,
+} from './legalSources';
 import { getYouTubeThumbnail, YouTubeSearchResult } from './youtube';
 
 export type MoodId =
@@ -17,6 +19,7 @@ export interface MoodDefinition {
   id: MoodId;
   label: string;
   genreSlugs: string[];
+  keywords: string[];
   description: string;
 }
 
@@ -24,65 +27,58 @@ export const MOOD_DEFINITIONS: MoodDefinition[] = [
   {
     id: 'laugh',
     label: 'Laugh',
-    genreSlugs: ['comedy', 'nollywood-comedy'],
-    description: 'Comedy and Nollywood Comedy lined up for a light night.',
+    genreSlugs: ['comedy'],
+    keywords: ['comedy', 'funny', 'laugh', 'hilarious', 'humor', 'humour'],
+    description: 'Light comedies lined up for an easy night.',
   },
   {
     id: 'cry',
     label: 'Cry',
-    genreSlugs: ['sad-emotional', 'drama'],
+    genreSlugs: ['drama'],
+    keywords: ['drama', 'emotional', 'tragedy', 'heartbreak', 'life'],
     description: 'Heartfelt drama and emotional stories.',
   },
   {
     id: 'thrill',
     label: 'Thrill',
     genreSlugs: ['thriller', 'horror', 'action'],
+    keywords: ['thriller', 'horror', 'action', 'mystery', 'suspense', 'night', 'dead'],
     description: 'Suspense, horror, and high-stakes action.',
   },
   {
     id: 'date-night',
     label: 'Date night',
-    genreSlugs: ['romance', 'nollywood-romance'],
-    description: 'Romance and Nollywood Romance picked for two.',
+    genreSlugs: ['romance', 'nollywood'],
+    keywords: ['romance', 'romantic', 'love', 'nollywood', 'nigerian', 'wedding'],
+    description: 'Romance and Nollywood favorites picked for two.',
   },
   {
     id: 'family',
     label: 'Family',
-    genreSlugs: ['family', 'animation'],
-    description: 'Family favorites and animated films for everyone.',
+    genreSlugs: ['family', 'sci-fi'],
+    keywords: ['family', 'kids', 'adventure', 'animation', 'sci-fi', 'space'],
+    description: 'Family-friendly films and classics for everyone.',
   },
   {
     id: 'surprise',
     label: 'Surprise me',
     genreSlugs: [],
-    description: 'One random pick from the cached movie rows.',
+    keywords: [],
+    description: 'One random pick from the legal movie catalog.',
   },
 ];
 
-// Queries pre-hydrated strictly from Supabase search_cache (no YouTube API quota spent)
-const MOOD_AND_PICK_SLUGS = [
-  'nollywood-movies',
-  'comedy',
-  'nollywood-comedy',
-  'sad-emotional',
-  'drama',
-  'thriller',
-  'horror',
-  'action',
-  'romance',
-  'nollywood-romance',
-  'family',
-  'animation',
-] as const;
+export type LegalPickItem =
+  | { kind: 'youtube'; video: YouTubeSearchResult }
+  | { kind: 'archive'; movie: ArchiveMovieItem };
 
-const TONIGHT_EXTRA_QUERY = 'full movie';
 const SURPRISE_HISTORY_KEY = 'movienest_surprise_history';
 const MAX_SURPRISE_HISTORY = 10;
 
 // In-memory backup if browser blocks localStorage
 let memorySurpriseHistory: string[] = [];
 
-// Read the last 10 Surprise Me video IDs safely from localStorage
+// Read the last 10 Surprise Me IDs safely from localStorage
 export function readSurpriseHistory(): string[] {
   try {
     if (typeof window === 'undefined' || !window.localStorage) {
@@ -92,7 +88,9 @@ export function readSurpriseHistory(): string[] {
     if (!raw) return memorySurpriseHistory;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    const clean = parsed.filter((id): id is string => typeof id === 'string').slice(0, MAX_SURPRISE_HISTORY);
+    const clean = parsed
+      .filter((id): id is string => typeof id === 'string')
+      .slice(0, MAX_SURPRISE_HISTORY);
     memorySurpriseHistory = clean;
     return clean;
   } catch {
@@ -100,9 +98,9 @@ export function readSurpriseHistory(): string[] {
   }
 }
 
-function recordSurprisePick(videoId: string): void {
-  const previous = readSurpriseHistory().filter((id) => id !== videoId);
-  const next = [videoId, ...previous].slice(0, MAX_SURPRISE_HISTORY);
+function recordSurprisePick(itemKey: string): void {
+  const previous = readSurpriseHistory().filter((id) => id !== itemKey);
+  const next = [itemKey, ...previous].slice(0, MAX_SURPRISE_HISTORY);
   memorySurpriseHistory = next;
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -113,72 +111,6 @@ function recordSurprisePick(videoId: string): void {
   }
 }
 
-// Fallback items from built-in open-licensed metadata if Supabase cache is cold
-export function getFallbackCatalogVideos(): YouTubeSearchResult[] {
-  const seen = new Set<string>();
-  const combined: YouTubeSearchResult[] = [];
-
-  for (const item of LIBRARY_VIDEOS) {
-    if (seen.has(item.youtubeId)) continue;
-    seen.add(item.youtubeId);
-    combined.push({
-      videoId: item.youtubeId,
-      title: item.title,
-      channelTitle: item.category,
-      thumbnail: getYouTubeThumbnail(item.youtubeId),
-    });
-  }
-
-  for (const item of FEATURED_VIDEOS) {
-    if (seen.has(item.youtubeId)) continue;
-    seen.add(item.youtubeId);
-    combined.push({
-      videoId: item.youtubeId,
-      title: item.title,
-      channelTitle: item.genre,
-      thumbnail: getYouTubeThumbnail(item.youtubeId),
-    });
-  }
-
-  return combined;
-}
-
-// Hydrate mood rows and Tonight's picks strictly from Supabase search_cache (zero YouTube API requests)
-export async function loadCachedMoodAndPickRows(): Promise<{
-  bySlug: Record<string, YouTubeSearchResult[]>;
-  fullMovies: YouTubeSearchResult[];
-}> {
-  const targetGenres = GENRE_LIST.filter((g) =>
-    (MOOD_AND_PICK_SLUGS as readonly string[]).includes(g.slug)
-  );
-
-  const [genreCacheResults, fullMovieCache] = await Promise.all([
-    Promise.all(
-      targetGenres.map(async (genre) => {
-        const cached = await getSearchCache<YouTubeSearchResult>(genre.query.toLowerCase());
-        return {
-          slug: genre.slug,
-          results: Array.isArray(cached?.results) ? cached.results : [],
-        };
-      })
-    ),
-    getSearchCache<YouTubeSearchResult>(TONIGHT_EXTRA_QUERY),
-  ]);
-
-  const bySlug: Record<string, YouTubeSearchResult[]> = {};
-  for (const entry of genreCacheResults) {
-    if (entry.results.length > 0) {
-      bySlug[entry.slug] = entry.results;
-    }
-  }
-
-  return {
-    bySlug,
-    fullMovies: Array.isArray(fullMovieCache?.results) ? fullMovieCache.results : [],
-  };
-}
-
-// Deduplicate an array of YouTubeSearchResult by videoId preserving order
 export function dedupeYouTubeVideos(items: YouTubeSearchResult[]): YouTubeSearchResult[] {
   const seen = new Set<string>();
   const out: YouTubeSearchResult[] = [];
@@ -193,61 +125,35 @@ export function dedupeYouTubeVideos(items: YouTubeSearchResult[]): YouTubeSearch
   return out;
 }
 
-// Build the movie list for a mood strictly from cached genre rows (plus fallback if cache is empty)
-export function getMoodVideosFromCache(
-  moodId: MoodId,
-  cachedBySlug: Record<string, YouTubeSearchResult[]>
-): YouTubeSearchResult[] {
-  const def = MOOD_DEFINITIONS.find((m) => m.id === moodId);
-  if (!def || def.genreSlugs.length === 0) return [];
-
-  const collected: YouTubeSearchResult[] = [];
-  for (const slug of def.genreSlugs) {
-    const row = cachedBySlug[slug];
-    if (Array.isArray(row)) {
-      collected.push(...row);
-    }
-  }
-
-  const deduped = dedupeYouTubeVideos(collected);
-  if (deduped.length > 0) {
-    return deduped;
-  }
-
-  // Fallback to built-in open movies when no cached genre rows exist yet
-  return getFallbackCatalogVideos();
-}
-
 export interface HeroFeaturedMovie {
   video: YouTubeSearchResult;
   categoryLabel: string;
 }
 
-// Pick up to 4 featured movies (slides 2-5) from already-cached Nollywood, Full Movies, and Action rows
-export function getHeroFeaturedMoviesFromCache(
-  cachedBySlug: Record<string, YouTubeSearchResult[]>,
-  fullMoviesCache: YouTubeSearchResult[]
+// Pick up to 4 featured movies (slides 2-5) from loaded legal YouTube sources
+// (Nollywood / Action trusted rows, Our picks, and Creative Commons)
+export function getHeroFeaturedMoviesFromCatalog(
+  catalog: LegalCatalogState
 ): HeroFeaturedMovie[] {
-  const nollywoodPool = dedupeYouTubeVideos([
-    ...(cachedBySlug['nollywood-movies'] ?? []),
-    ...(cachedBySlug['new-nollywood'] ?? []),
-    ...(cachedBySlug['nollywood-comedy'] ?? []),
-    ...(cachedBySlug['nollywood-romance'] ?? []),
-  ]);
-  const fullMoviesPool = dedupeYouTubeVideos(fullMoviesCache);
-  const actionPool = dedupeYouTubeVideos(cachedBySlug['action'] ?? []);
+  const nollywoodPool = dedupeYouTubeVideos(catalog.trustedByGenre['nollywood'] ?? []);
+  const actionPool = dedupeYouTubeVideos(catalog.trustedByGenre['action'] ?? []);
+  const ourPicksPool = dedupeYouTubeVideos(catalog.ourPicks.map(ourPickToYouTubeResult));
+  const ccPool = dedupeYouTubeVideos(catalog.creativeCommons);
+  const otherTrustedPool = dedupeYouTubeVideos(catalog.trustedVideos);
 
   const buckets: Array<{ items: YouTubeSearchResult[]; label: string }> = [
-    { items: nollywoodPool, label: 'Nollywood' },
-    { items: fullMoviesPool, label: 'Full Movie' },
-    { items: actionPool, label: 'Action' },
+    { items: nollywoodPool, label: 'Official channel' },
+    { items: ourPicksPool, label: 'Our picks' },
+    { items: actionPool, label: 'Official channel' },
+    { items: ccPool, label: 'Creative Commons' },
+    { items: otherTrustedPool, label: 'Official channel' },
   ];
 
   const picked: HeroFeaturedMovie[] = [];
   const seenIds = new Set<string>();
   const cursors = buckets.map(() => 0);
 
-  // Round-robin across the 3 cached categories so slides 2-5 stay a varied mix
+  // Round-robin across available legal buckets for a varied mix
   while (picked.length < 4) {
     let addedInPass = false;
 
@@ -261,9 +167,10 @@ export function getHeroFeaturedMoviesFromCache(
         picked.push({
           video: {
             ...candidate,
+            sourceLabel: candidate.sourceLabel ?? bucket.label,
             thumbnail: candidate.thumbnail || getYouTubeThumbnail(candidate.videoId),
           },
-          categoryLabel: bucket.label,
+          categoryLabel: candidate.sourceLabel ?? bucket.label,
         });
         addedInPass = true;
         break;
@@ -276,66 +183,142 @@ export function getHeroFeaturedMoviesFromCache(
   return picked;
 }
 
-// Build Tonight's picks (4-8 items) from cached Nollywood + Full Movies rows, falling back to open library
-export function getTonightsPicksFromCache(
-  cachedBySlug: Record<string, YouTubeSearchResult[]>,
-  fullMoviesCache: YouTubeSearchResult[]
-): YouTubeSearchResult[] {
-  const nollywood = cachedBySlug['nollywood-movies'] ?? [];
-  const interleaved: YouTubeSearchResult[] = [];
-  const maxPairs = Math.max(nollywood.length, fullMoviesCache.length, 4);
+// Build Tonight's picks (up to 8 legal movies across YouTube sources + Internet Archive)
+export function getTonightsPicksFromCatalog(
+  catalog: LegalCatalogState
+): LegalPickItem[] {
+  const ourPickVideos = catalog.ourPicks.map(ourPickToYouTubeResult);
+  const youtubePool = dedupeYouTubeVideos([
+    ...ourPickVideos,
+    ...catalog.trustedVideos,
+    ...catalog.creativeCommons,
+  ]);
 
-  for (let i = 0; i < maxPairs; i++) {
-    if (nollywood[i]) interleaved.push(nollywood[i]);
-    if (fullMoviesCache[i]) interleaved.push(fullMoviesCache[i]);
-  }
+  const picks: LegalPickItem[] = youtubePool
+    .slice(0, 8)
+    .map((video) => ({ kind: 'youtube', video }));
 
-  const deduped = dedupeYouTubeVideos(interleaved);
-  if (deduped.length >= 4) {
-    return deduped.slice(0, 8);
-  }
-
-  return dedupeYouTubeVideos([...deduped, ...getFallbackCatalogVideos()]).slice(0, 8);
-}
-
-// Pick 1 random movie from all cached rows without repeating the last 10 Surprise Me picks
-export function pickSurpriseFromCache(
-  cachedBySlug: Record<string, YouTubeSearchResult[]>,
-  fullMoviesCache: YouTubeSearchResult[],
-  excludeCurrentId?: string
-): YouTubeSearchResult | null {
-  const poolRaw: YouTubeSearchResult[] = [...fullMoviesCache];
-  for (const row of Object.values(cachedBySlug)) {
-    if (Array.isArray(row)) {
-      poolRaw.push(...row);
+  // Fill remaining slots up to 8 with Public domain Internet Archive movies
+  if (picks.length < 8) {
+    const seenArchive = new Set<string>();
+    for (const movie of [...catalog.archiveClassics, ...catalog.archiveNew]) {
+      if (picks.length >= 8) break;
+      if (!movie.identifier || seenArchive.has(movie.identifier)) continue;
+      seenArchive.add(movie.identifier);
+      picks.push({ kind: 'archive', movie });
     }
   }
 
-  let pool = dedupeYouTubeVideos(poolRaw);
-  if (pool.length === 0) {
-    pool = getFallbackCatalogVideos();
+  return picks;
+}
+
+// Filter loaded legal sources for a Home mood pill
+export function getMoodVideosFromCatalog(
+  moodId: MoodId,
+  catalog: LegalCatalogState
+): LegalPickItem[] {
+  const def = MOOD_DEFINITIONS.find((m) => m.id === moodId);
+  if (!def || moodId === 'surprise') return [];
+
+  const ytCollected: YouTubeSearchResult[] = [];
+  for (const slug of def.genreSlugs) {
+    const row = catalog.trustedByGenre[slug];
+    if (Array.isArray(row)) ytCollected.push(...row);
   }
+
+  // Also match Our picks and Creative Commons by mood keywords
+  const extraYouTube = [
+    ...catalog.ourPicks.map(ourPickToYouTubeResult),
+    ...catalog.creativeCommons,
+  ];
+  for (const video of extraYouTube) {
+    const text = `${video.title} ${video.channelTitle} ${video.description ?? ''}`.toLowerCase();
+    if (def.keywords.some((kw) => text.includes(kw))) {
+      ytCollected.push(video);
+    }
+  }
+
+  const dedupedYt = dedupeYouTubeVideos(ytCollected);
+  const results: LegalPickItem[] = dedupedYt.map((video) => ({
+    kind: 'youtube',
+    video,
+  }));
+
+  // Also include matching Internet Archive movies, or fallback to top Archive classics if YouTube mood list is empty
+  const seenArchive = new Set<string>();
+  const archiveAll = [...catalog.archiveClassics, ...catalog.archiveNew];
+  for (const movie of archiveAll) {
+    if (!movie.identifier || seenArchive.has(movie.identifier)) continue;
+    const text = `${movie.title} ${movie.year ?? ''}`.toLowerCase();
+    if (def.keywords.some((kw) => text.includes(kw))) {
+      seenArchive.add(movie.identifier);
+      results.push({ kind: 'archive', movie });
+    }
+  }
+
+  if (results.length === 0) {
+    for (const movie of archiveAll.slice(0, 8)) {
+      if (!movie.identifier || seenArchive.has(movie.identifier)) continue;
+      seenArchive.add(movie.identifier);
+      results.push({ kind: 'archive', movie });
+    }
+  }
+
+  return results;
+}
+
+// Pick 1 random movie from all 4 legal sources without repeating the last 10 picks
+export function pickSurpriseFromCatalog(
+  catalog: LegalCatalogState,
+  excludeCurrentId?: string
+): LegalPickItem | null {
+  const youtubePool = dedupeYouTubeVideos([
+    ...catalog.trustedVideos,
+    ...catalog.ourPicks.map(ourPickToYouTubeResult),
+    ...catalog.creativeCommons,
+  ]);
+
+  const seenArchive = new Set<string>();
+  const archivePool: ArchiveMovieItem[] = [];
+  for (const movie of [...catalog.archiveNew, ...catalog.archiveClassics]) {
+    if (!movie.identifier || seenArchive.has(movie.identifier)) continue;
+    seenArchive.add(movie.identifier);
+    archivePool.push(movie);
+  }
+
+  const pool: Array<{ key: string; item: LegalPickItem }> = [
+    ...youtubePool.map((video) => ({
+      key: `yt:${video.videoId}`,
+      item: { kind: 'youtube', video } as LegalPickItem,
+    })),
+    ...archivePool.map((movie) => ({
+      key: `ar:${movie.identifier}`,
+      item: { kind: 'archive', movie } as LegalPickItem,
+    })),
+  ];
+
   if (pool.length === 0) return null;
 
   const recentIds = readSurpriseHistory();
   const excluded = new Set(recentIds);
-  if (excludeCurrentId) excluded.add(excludeCurrentId);
-
-  let candidates = pool.filter((item) => !excluded.has(item.videoId));
-
-  // If the entire cached pool was picked within the last 10 tries, keep avoiding at least the current & newest picks
-  if (candidates.length === 0) {
-    const minimalExclude = new Set<string>();
-    if (excludeCurrentId) minimalExclude.add(excludeCurrentId);
-    else if (recentIds[0]) minimalExclude.add(recentIds[0]);
-    candidates = pool.filter((item) => !minimalExclude.has(item.videoId));
+  if (excludeCurrentId) {
+    excluded.add(`yt:${excludeCurrentId}`);
+    excluded.add(`ar:${excludeCurrentId}`);
+    excluded.add(excludeCurrentId);
   }
 
+  let candidates = pool.filter((entry) => !excluded.has(entry.key));
+  if (candidates.length === 0 && excludeCurrentId) {
+    candidates = pool.filter(
+      (entry) =>
+        entry.key !== `yt:${excludeCurrentId}` && entry.key !== `ar:${excludeCurrentId}`
+    );
+  }
   if (candidates.length === 0) {
     candidates = pool;
   }
 
   const chosen = candidates[Math.floor(Math.random() * candidates.length)];
-  recordSurprisePick(chosen.videoId);
-  return chosen;
+  recordSurprisePick(chosen.key);
+  return chosen.item;
 }

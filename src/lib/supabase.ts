@@ -513,117 +513,51 @@ export async function sendRoomMessage(params: {
   return { message: data as RoomMessage, error: null };
 }
 
-// Shared library categories (Nollywood and Movies appear first on the home page)
-export const SHARED_LIBRARY_CATEGORIES = [
-  'Nollywood',
-  'Movies',
-  'Animation',
-  'Documentary',
-  'Music',
-  'Other',
-] as const;
-
-export type SharedLibraryCategory = (typeof SHARED_LIBRARY_CATEGORIES)[number];
-
-// Matches the "library" table schema in Supabase
+// Matches the "library" table schema in Supabase ("Our picks")
 export interface SharedLibraryItem {
   id: string;
   video_id: string;
   title: string;
-  category: SharedLibraryCategory;
+  category: string;
+  credit?: string | null;
+  permission_note?: string | null;
+  approved?: boolean | null;
   created_at: string;
 }
 
-// Load all shared library videos, newest first
+// Load approved "Our picks" rows from the Supabase "library" table, newest first
 export async function fetchSharedLibrary(): Promise<{
   items: SharedLibraryItem[];
   error: string | null;
 }> {
   const { data, error } = await supabase
     .from('library')
-    .select('*')
+    .select('video_id, title, category, credit, permission_note, created_at')
+    .eq('approved', true)
     .order('created_at', { ascending: false });
 
   if (error) {
     return {
       items: [],
-      error: 'Could not load the shared library right now.',
+      error: 'Could not load curated picks right now.',
     };
   }
 
-  return { items: (data as SharedLibraryItem[]) ?? [], error: null };
-}
+  const rows = Array.isArray(data) ? data : [];
+  const items: SharedLibraryItem[] = rows
+    .filter((row) => typeof row?.video_id === 'string' && row.video_id.trim().length > 0)
+    .map((row) => ({
+      id: row.video_id,
+      video_id: row.video_id.trim(),
+      title: typeof row.title === 'string' && row.title.trim() ? row.title.trim() : `YouTube Video (${row.video_id})`,
+      category: typeof row.category === 'string' && row.category.trim() ? row.category.trim() : 'Movies',
+      credit: typeof row.credit === 'string' ? row.credit.trim() : null,
+      permission_note: typeof row.permission_note === 'string' ? row.permission_note.trim() : null,
+      approved: true,
+      created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+    }));
 
-// Save a YouTube video to the shared "library" table and ignore duplicates gracefully
-export async function saveToSharedLibrary(params: {
-  videoId: string;
-  title: string;
-  category: SharedLibraryCategory;
-}): Promise<{
-  item: SharedLibraryItem | null;
-  duplicate: boolean;
-  error: string | null;
-}> {
-  const cleanVideoId = params.videoId.trim();
-  if (!/^[a-zA-Z0-9_-]{11}$/.test(cleanVideoId)) {
-    return {
-      item: null,
-      duplicate: false,
-      error: 'Please choose a valid YouTube video.',
-    };
-  }
-
-  // Check first so duplicates are handled cleanly even without a unique index
-  const { data: existing, error: lookupError } = await supabase
-    .from('library')
-    .select('*')
-    .eq('video_id', cleanVideoId)
-    .maybeSingle();
-
-  if (lookupError) {
-    return {
-      item: null,
-      duplicate: false,
-      error: 'Could not save this video right now. Please try again.',
-    };
-  }
-
-  if (existing) {
-    return {
-      item: existing as SharedLibraryItem,
-      duplicate: true,
-      error: null,
-    };
-  }
-
-  const cleanTitle = params.title.trim().slice(0, 120) || `YouTube Video (${cleanVideoId})`;
-
-  const { data, error } = await supabase
-    .from('library')
-    .insert({
-      video_id: cleanVideoId,
-      title: cleanTitle,
-      category: params.category,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === '23505') {
-      return { item: null, duplicate: true, error: null };
-    }
-    return {
-      item: null,
-      duplicate: false,
-      error: 'Could not save this video right now. Please try again.',
-    };
-  }
-
-  return {
-    item: data as SharedLibraryItem,
-    duplicate: false,
-    error: null,
-  };
+  return { items, error: null };
 }
 
 // Matches the "search_cache" table schema in Supabase (query, results JSON, fetched_at)
