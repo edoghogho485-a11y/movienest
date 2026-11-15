@@ -5,7 +5,14 @@ import {
   isValidArchiveDownloadUrl,
 } from '../lib/archive';
 import {
+  BROKEN_VIDEOS_UPDATED_EVENT,
+  makeBrokenVideoKey,
+  readBrokenVideoKeys,
+} from '../lib/brokenVideos';
+import { isNewVideo } from '../lib/freshness';
+import {
   EMPTY_LEGAL_CATALOG,
+  filterCatalogByBrokenVideos,
   LegalCatalogState,
   loadAllLegalSources,
   searchLegalCatalog,
@@ -68,14 +75,23 @@ export function RoomVideoPickerModal({
   const [catalog, setCatalog] = useState<LegalCatalogState>(EMPTY_LEGAL_CATALOG);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [brokenKeys, setBrokenKeys] = useState<Set<string>>(() => readBrokenVideoKeys());
 
   const [activeSlug, setActiveSlug] = useState<string>('our-picks');
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ text: string; tone: 'ok' | 'error' } | null>(null);
 
   useEffect(() => {
+    const syncBroken = () => setBrokenKeys(readBrokenVideoKeys());
+    syncBroken();
+    window.addEventListener(BROKEN_VIDEOS_UPDATED_EVENT, syncBroken);
+    return () => window.removeEventListener(BROKEN_VIDEOS_UPDATED_EVENT, syncBroken);
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     setFeedback(null);
+    setBrokenKeys(readBrokenVideoKeys());
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -123,33 +139,47 @@ export function RoomVideoPickerModal({
     };
   }, [pasteInput]);
 
+  const visibleCatalog = useMemo(
+    () => filterCatalogByBrokenVideos(catalog, brokenKeys),
+    [catalog, brokenKeys]
+  );
+
+  const visibleLibrary = useMemo(
+    () =>
+      safeLibrary.filter(
+        (item) => !brokenKeys.has(makeBrokenVideoKey('youtube', item.video_id))
+      ),
+    [safeLibrary, brokenKeys]
+  );
+
   // Build visible tabs strictly from non-empty legal sources
   const tabs = useMemo<PickerTab[]>(() => {
     const list: PickerTab[] = [];
-    const ourPicksList = catalog.ourPicks.length > 0 ? catalog.ourPicks : safeLibrary;
+    const ourPicksList =
+      visibleCatalog.ourPicks.length > 0 ? visibleCatalog.ourPicks : visibleLibrary;
 
     if (ourPicksList.length > 0) {
       list.push({ slug: 'our-picks', name: 'Our picks' });
     }
     for (const genre of TRUSTED_GENRE_DEFINITIONS) {
-      if ((catalog.trustedByGenre[genre.slug]?.length ?? 0) > 0) {
+      if ((visibleCatalog.trustedByGenre[genre.slug]?.length ?? 0) > 0) {
         list.push({ slug: genre.slug, name: genre.name });
       }
     }
-    if (catalog.trustedVideos.length > 0) {
+    if (visibleCatalog.trustedVideos.length > 0) {
       list.push({ slug: 'official-channels', name: 'Official channels' });
     }
-    if (catalog.creativeCommons.length > 0) {
+    if (visibleCatalog.creativeCommons.length > 0) {
       list.push({ slug: 'creative-commons', name: 'Creative Commons' });
     }
-    if (catalog.archiveNew.length > 0) {
+    if (visibleCatalog.archiveNew.length > 0) {
       list.push({ slug: 'archive-new', name: 'Recently added' });
     }
-    if (catalog.archiveClassics.length > 0) {
+    if (visibleCatalog.archiveClassics.length > 0) {
       list.push({ slug: 'archive-classics', name: 'Classics' });
     }
     return list;
-  }, [catalog, safeLibrary]);
+  }, [visibleCatalog, visibleLibrary]);
 
   useEffect(() => {
     if (tabs.length > 0 && !tabs.some((t) => t.slug === activeSlug)) {
@@ -218,7 +248,12 @@ export function RoomVideoPickerModal({
     }
   };
 
-  const renderCard = (movie: PickerMovieSelection, subtitle: string, badge?: string) => {
+  const renderCard = (
+    movie: PickerMovieSelection,
+    subtitle: string,
+    badge?: string,
+    isNew?: boolean
+  ) => {
     const inQueue = safeQueue.some(
       (q) => q.videoId === movie.videoId && q.source === movie.source
     );
@@ -246,6 +281,11 @@ export function RoomVideoPickerModal({
           {badge && (
             <span className="absolute left-1.5 top-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
               {badge}
+            </span>
+          )}
+          {isNew && (
+            <span className="absolute right-1.5 top-1.5 rounded-full bg-[#f2a33a] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#1a1208]">
+              New
             </span>
           )}
         </div>
@@ -294,14 +334,16 @@ export function RoomVideoPickerModal({
   const searchMatches = activeSearchQuery
     ? searchLegalCatalog(
         {
-          ...catalog,
-          ourPicks: catalog.ourPicks.length > 0 ? catalog.ourPicks : safeLibrary,
+          ...visibleCatalog,
+          ourPicks:
+            visibleCatalog.ourPicks.length > 0 ? visibleCatalog.ourPicks : visibleLibrary,
         },
         activeSearchQuery
       )
     : null;
 
-  const ourPicksList = catalog.ourPicks.length > 0 ? catalog.ourPicks : safeLibrary;
+  const ourPicksList =
+    visibleCatalog.ourPicks.length > 0 ? visibleCatalog.ourPicks : visibleLibrary;
 
   return (
     <div
@@ -485,7 +527,8 @@ export function RoomVideoPickerModal({
                       source: 'youtube',
                     },
                     video.channelTitle,
-                    video.sourceLabel
+                    video.sourceLabel ?? 'YouTube',
+                    isNewVideo(video.addedAt)
                   )
                 )}
                 {searchMatches.archive.map((movie) =>
@@ -497,7 +540,8 @@ export function RoomVideoPickerModal({
                       source: 'archive',
                     },
                     movie.year ? `${movie.year} · Public domain` : 'Public domain',
-                    'Public domain'
+                    'Public domain',
+                    isNewVideo(movie.addedAt ?? movie.addeddate)
                   )
                 )}
               </div>
@@ -519,13 +563,14 @@ export function RoomVideoPickerModal({
                     source: 'youtube',
                   },
                   item.credit?.trim() || item.category,
-                  'Our picks'
+                  'Our picks',
+                  isNewVideo(item.addedAt ?? item.created_at)
                 )
               )}
             </div>
           ) : activeSlug === 'creative-commons' ? (
             <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-              {catalog.creativeCommons.map((video) =>
+              {visibleCatalog.creativeCommons.map((video) =>
                 renderCard(
                   {
                     videoId: video.videoId,
@@ -534,13 +579,14 @@ export function RoomVideoPickerModal({
                     source: 'youtube',
                   },
                   video.channelTitle,
-                  'Creative Commons'
+                  'Creative Commons',
+                  isNewVideo(video.addedAt)
                 )
               )}
             </div>
           ) : activeSlug === 'archive-new' ? (
             <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-              {catalog.archiveNew.map((movie) =>
+              {visibleCatalog.archiveNew.map((movie) =>
                 renderCard(
                   {
                     videoId: movie.identifier,
@@ -549,13 +595,14 @@ export function RoomVideoPickerModal({
                     source: 'archive',
                   },
                   movie.year ? `${movie.year} · Public domain` : 'Public domain',
-                  'Public domain'
+                  'Public domain',
+                  isNewVideo(movie.addedAt ?? movie.addeddate)
                 )
               )}
             </div>
           ) : activeSlug === 'archive-classics' ? (
             <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-              {catalog.archiveClassics.map((movie) =>
+              {visibleCatalog.archiveClassics.map((movie) =>
                 renderCard(
                   {
                     videoId: movie.identifier,
@@ -564,13 +611,14 @@ export function RoomVideoPickerModal({
                     source: 'archive',
                   },
                   movie.year ? `${movie.year} · Public domain` : 'Public domain',
-                  'Public domain'
+                  'Public domain',
+                  isNewVideo(movie.addedAt ?? movie.addeddate)
                 )
               )}
             </div>
           ) : activeSlug === 'official-channels' ? (
             <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-              {catalog.trustedVideos.map((video) =>
+              {visibleCatalog.trustedVideos.map((video) =>
                 renderCard(
                   {
                     videoId: video.videoId,
@@ -579,13 +627,14 @@ export function RoomVideoPickerModal({
                     source: 'youtube',
                   },
                   video.channelTitle,
-                  'Official channel'
+                  'Official channel',
+                  isNewVideo(video.addedAt)
                 )
               )}
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
-              {(catalog.trustedByGenre[activeSlug] ?? []).map((video) =>
+              {(visibleCatalog.trustedByGenre[activeSlug] ?? []).map((video) =>
                 renderCard(
                   {
                     videoId: video.videoId,
@@ -594,7 +643,8 @@ export function RoomVideoPickerModal({
                     source: 'youtube',
                   },
                   video.channelTitle,
-                  'Official channel'
+                  'Official channel',
+                  isNewVideo(video.addedAt)
                 )
               )}
             </div>

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  ExternalLink,
   Film,
+  Flag,
   Lock,
   Share2,
   Users,
@@ -12,7 +12,9 @@ import {
   getArchiveThumbnail,
   isValidArchiveDownloadUrl,
 } from '../lib/archive';
+import { markBrokenVideo } from '../lib/brokenVideos';
 import { upsertWatchHistory } from '../lib/localLists';
+import { buildReportVideoMailto } from '../lib/report';
 import {
   getArchiveWatchAloneLink,
   getWatchAloneLink,
@@ -34,6 +36,7 @@ export interface WatchableVideo {
   thumbnail: string;
   duration?: string;
   source?: 'youtube' | 'archive';
+  sourceLabel?: string;
   videoUrl?: string;
   initialPositionSeconds?: number;
 }
@@ -55,6 +58,7 @@ function RelatedVideoCard({
   onSelect: (video: WatchableVideo) => void;
 }) {
   const [imgError, setImgError] = useState(false);
+  const badge = item.sourceLabel ?? (item.source === 'archive' ? 'Public domain' : 'YouTube');
 
   return (
     <button
@@ -79,6 +83,9 @@ function RelatedVideoCard({
             </span>
           </div>
         )}
+        <span className="absolute left-2 top-2 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
+          {badge}
+        </span>
         {item.duration && (
           <span className="absolute right-2.5 bottom-2 rounded-md bg-[#14110f]/90 px-2 py-0.5 font-mono text-xs font-medium text-[#f4ece1] tabular-nums">
             {item.duration}
@@ -258,6 +265,7 @@ export function VideoPlayerPage({
       } else {
         setArchiveUrl(null);
         setArchiveError(true);
+        markBrokenVideo('archive', video.youtubeId);
       }
       setArchiveLoading(false);
       return;
@@ -275,6 +283,7 @@ export function VideoPlayerPage({
       }
       if (!isValidArchiveDownloadUrl(details.mp4Url)) {
         setArchiveError(true);
+        markBrokenVideo('archive', video.youtubeId);
         return;
       }
       setArchiveUrl(details.mp4Url);
@@ -332,7 +341,11 @@ export function VideoPlayerPage({
             }
           },
           onError: (event) => {
-            if (!cancelled && (event.data === 101 || event.data === 150)) {
+            if (
+              !cancelled &&
+              (event.data === 100 || event.data === 101 || event.data === 150)
+            ) {
+              markBrokenVideo('youtube', video.youtubeId);
               setEmbedBlocked(true);
             }
           },
@@ -413,6 +426,23 @@ export function VideoPlayerPage({
     );
   };
 
+  const resolvedSourceLabel =
+    video.sourceLabel ?? (isArchive ? 'Public domain' : 'YouTube');
+  const reportMailto = buildReportVideoMailto({
+    title: displayTitle,
+    videoId: video.youtubeId,
+    sourceType: isArchive ? 'archive' : 'youtube',
+    sourceLabel: resolvedSourceLabel,
+  });
+
+  const handleTryAnother = () => {
+    if (relatedVideos.length > 0) {
+      onSelectRelatedVideo(relatedVideos[0]);
+    } else {
+      onBack();
+    }
+  };
+
   return (
     <section className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <button
@@ -443,19 +473,28 @@ export function VideoPlayerPage({
               </div>
               <div className="max-w-md space-y-1.5">
                 <p className="text-lg font-bold text-[#f4ece1]">
-                  This Archive movie couldn&apos;t load
+                  This video can&apos;t be played here
                 </p>
                 <p className="text-sm text-[#b9aa98]">
-                  The MP4 stream may be unavailable or temporarily slow on Internet Archive.
+                  This stream couldn&apos;t load, so we&apos;ve hidden it on this device.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={onBack}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
-              >
-                <span>Try another movie</span>
-              </button>
+              <div className="flex flex-wrap justify-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleTryAnother}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
+                >
+                  <span>Try another</span>
+                </button>
+                <a
+                  href={reportMailto}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-5 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a]"
+                >
+                  <Flag className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                  <span>Report this video</span>
+                </a>
+              </div>
             </div>
           ) : (
             <video
@@ -476,7 +515,10 @@ export function VideoPlayerPage({
                 }
               }}
               onEnded={() => saveHistoryProgress(true)}
-              onError={() => setArchiveError(true)}
+              onError={() => {
+                markBrokenVideo('archive', video.youtubeId);
+                setArchiveError(true);
+              }}
               className="aspect-video w-full bg-[#14110f]"
             />
           )
@@ -487,22 +529,29 @@ export function VideoPlayerPage({
             </div>
             <div className="max-w-md space-y-1.5">
               <p className="text-lg font-bold text-[#f4ece1]">
-                This video&apos;s owner blocks embedding
+                This video can&apos;t be played here
               </p>
               <p className="text-sm text-[#b9aa98]">
-                YouTube restricts playback of this video on external websites, so you can watch it
-                directly on YouTube instead.
+                This video isn&apos;t available for embedded playback, so we&apos;ve hidden it on
+                this device.
               </p>
             </div>
-            <a
-              href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f]"
-            >
-              <span>Open on YouTube</span>
-              <ExternalLink className="h-4 w-4" aria-hidden="true" />
-            </a>
+            <div className="flex flex-wrap justify-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleTryAnother}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
+              >
+                <span>Try another</span>
+              </button>
+              <a
+                href={reportMailto}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-5 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a]"
+              >
+                <Flag className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                <span>Report this video</span>
+              </a>
+            </div>
           </div>
         ) : (
           <div ref={playerMountRef} className="relative aspect-video w-full bg-[#14110f]" />
@@ -514,24 +563,22 @@ export function VideoPlayerPage({
           <h1 className="text-2xl font-bold tracking-tight text-[#f4ece1] sm:text-3xl">
             {displayTitle}
           </h1>
-          <p className="mt-1.5 text-sm text-[#b9aa98]">
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-[#b9aa98]">
             <span>Watching Alone</span>
-            <span className="mx-2" aria-hidden="true">
-              ·
+            <span aria-hidden="true">·</span>
+            <span className="rounded-full border border-[#3a322a] bg-[#1e1a16] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-[#f4ece1]">
+              {resolvedSourceLabel}
             </span>
-            <span>{isArchive ? 'Internet Archive' : video.category}</span>
             {video.duration && (
               <>
-                <span className="mx-2" aria-hidden="true">
-                  ·
-                </span>
+                <span aria-hidden="true">·</span>
                 <span className="font-mono tabular-nums">{video.duration}</span>
               </>
             )}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <BookmarkButton
             source={isArchive ? 'archive' : 'youtube'}
             id={video.youtubeId}
@@ -549,6 +596,14 @@ export function VideoPlayerPage({
             <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
             <span>Share</span>
           </button>
+
+          <a
+            href={reportMailto}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-4 py-2.5 text-sm font-medium text-[#b9aa98] whitespace-nowrap transition-colors hover:border-[#f2a33a] hover:text-[#f4ece1]"
+          >
+            <Flag className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+            <span>Report this video</span>
+          </a>
 
           <button
             type="button"

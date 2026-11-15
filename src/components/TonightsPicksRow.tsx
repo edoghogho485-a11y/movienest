@@ -59,7 +59,7 @@ export function TonightsPicksRow({
             <YouTubeMovieCard
               key={`tonight-yt-${entry.video.videoId}`}
               video={entry.video}
-              className="w-[240px] sm:w-[270px] shrink-0 snap-start lg:w-full"
+              className="w-[260px] sm:w-[276px] shrink-0 snap-start lg:w-full"
               onWatch={onWatchYouTube}
               onCreateRoom={onCreateRoomYouTube}
               onShare={onShareYouTube}
@@ -68,7 +68,7 @@ export function TonightsPicksRow({
             <ArchiveMovieCard
               key={`tonight-ar-${entry.movie.identifier}`}
               movie={entry.movie}
-              className="w-[240px] sm:w-[270px] shrink-0 snap-start lg:w-full"
+              className="w-[260px] sm:w-[276px] shrink-0 snap-start lg:w-full"
               onWatch={onWatchArchive}
               onCreateRoom={onCreateRoomArchive}
               onShare={onShareArchive}

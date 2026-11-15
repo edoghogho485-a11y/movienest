@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Film, Share2, Users } from 'lucide-react';
+import { isNewVideo } from '../lib/freshness';
 import { YouTubeSearchResult } from '../lib/youtube';
 import { BookmarkButton } from './BookmarkButton';
+import { CardActionMenu } from './CardActionMenu';
 
 interface YouTubeMovieCardProps {
   video: YouTubeSearchResult;
@@ -21,7 +23,8 @@ export function YouTubeMovieCard({
   onShare,
 }: YouTubeMovieCardProps) {
   const [imgError, setImgError] = useState(false);
-  const badge = sourceLabel ?? video.sourceLabel;
+  const badge = sourceLabel ?? video.sourceLabel ?? 'YouTube';
+  const isNew = isNewVideo(video.addedAt);
 
   return (
     <article
@@ -50,9 +53,13 @@ export function YouTubeMovieCard({
             </div>
           )}
 
-          {badge && (
-            <span className="absolute left-2 top-2 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
-              {badge}
+          <span className="absolute left-2 top-2 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
+            {badge}
+          </span>
+
+          {isNew && (
+            <span className="absolute right-2 top-2 rounded-full bg-[#f2a33a] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#1a1208]">
+              New
             </span>
           )}
 
@@ -73,7 +80,7 @@ export function YouTubeMovieCard({
         <button
           type="button"
           onClick={() => onCreateRoom(video)}
-          className="inline-flex min-h-[44px] flex-1 min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-3 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
+          className="inline-flex min-h-[44px] flex-1 min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-2.5 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
         >
           <Users className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span>Room</span>
@@ -94,6 +101,13 @@ export function YouTubeMovieCard({
         >
           <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
         </button>
+
+        <CardActionMenu
+          title={video.title}
+          videoId={video.videoId}
+          sourceType="youtube"
+          sourceLabel={badge}
+        />
       </div>
     </article>
   );

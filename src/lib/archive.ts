@@ -8,6 +8,7 @@ export interface ArchiveMovieItem {
   title: string;
   year?: string;
   addeddate?: string;
+  addedAt?: string;
   thumbnail: string;
 }
 
@@ -45,6 +46,13 @@ export function isValidArchiveDownloadUrl(
   return typeof url === 'string' && url.startsWith('https://archive.org/download/');
 }
 
+function normalizeArchiveItems(items: ArchiveMovieItem[]): ArchiveMovieItem[] {
+  return items.map((item) => ({
+    ...item,
+    addedAt: item.addedAt ?? item.addeddate,
+  }));
+}
+
 // Fetch Internet Archive advancedsearch.php with 24-hour Supabase search_cache support
 export async function searchArchiveWithCache(
   archiveQuery: string,
@@ -59,7 +67,7 @@ export async function searchArchiveWithCache(
       !Number.isNaN(fetchedAtMs) &&
       Date.now() - fetchedAtMs < ARCHIVE_CACHE_MAX_AGE_MS;
     if (isFresh) {
-      return { results: cached.results, error: false };
+      return { results: normalizeArchiveItems(cached.results), error: false };
     }
   }
 
@@ -80,7 +88,7 @@ export async function searchArchiveWithCache(
 
     if (!response.ok) {
       if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
-        return { results: cached.results, error: false };
+        return { results: normalizeArchiveItems(cached.results), error: false };
       }
       return { results: [], error: true };
     }
@@ -102,11 +110,13 @@ export async function searchArchiveWithCache(
       .map((doc) => {
         const identifier = doc.identifier!.trim();
         const rawTitle = Array.isArray(doc.title) ? doc.title[0] : doc.title;
+        const addeddate = typeof doc.addeddate === 'string' ? doc.addeddate : undefined;
         return {
           identifier,
           title: (rawTitle && String(rawTitle).trim()) || identifier,
           year: doc.year !== undefined ? String(doc.year) : undefined,
-          addeddate: typeof doc.addeddate === 'string' ? doc.addeddate : undefined,
+          addeddate,
+          addedAt: addeddate,
           thumbnail: getArchiveThumbnail(identifier),
         };
       });
@@ -118,7 +128,7 @@ export async function searchArchiveWithCache(
     return { results: mapped, error: false };
   } catch {
     if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
-      return { results: cached.results, error: false };
+      return { results: normalizeArchiveItems(cached.results), error: false };
     }
     return { results: [], error: true };
   }

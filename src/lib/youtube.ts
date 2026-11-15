@@ -7,8 +7,9 @@ export const YOUTUBE_API_KEY =
 
 export const hasYouTubeApiKey = Boolean(YOUTUBE_API_KEY);
 
-// 24-hour freshness window for Trusted Channels, 72-hour window for Creative Commons
+// 24-hour freshness window for Trusted Channels & status checks, 72-hour window for Creative Commons search
 const CHANNEL_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const STATUS_CHECK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const CC_CACHE_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 const MIN_FULL_MOVIE_SECONDS = 60 * 60; // 60 minutes
 
@@ -22,6 +23,7 @@ export interface YouTubeSearchResult {
   description?: string;
   tags?: string[];
   sourceLabel?: string;
+  addedAt?: string;
 }
 
 export interface YTPlayer {
@@ -181,6 +183,125 @@ export async function fetchYouTubeTitle(videoId: string): Promise<string> {
   }
 }
 
+interface VerifiedVideoMeta {
+  videoId: string;
+  playable: boolean;
+  duration?: string;
+  durationSeconds?: number;
+  addedAt?: string;
+}
+
+// Batch-check YouTube videos via videos.list and record whether each video is still public & embeddable
+async function fetchPlayableVideoMetaMap(
+  videoIds: string[]
+): Promise<Map<string, VerifiedVideoMeta> | null> {
+  if (!YOUTUBE_API_KEY || videoIds.length === 0) return null;
+
+  const result = new Map<string, VerifiedVideoMeta>();
+  try {
+    for (let i = 0; i < videoIds.length; i += 50) {
+      const batch = videoIds.slice(i, i + 50);
+      const params = new URLSearchParams({
+        part: 'status,contentDetails,snippet',
+        id: batch.join(','),
+        key: YOUTUBE_API_KEY,
+      });
+
+      const res = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?${params.toString()}`
+      );
+      if (!res.ok) return null;
+
+      const data = (await res.json()) as {
+        items?: Array<{
+          id?: string;
+          status?: { privacyStatus?: string; embeddable?: boolean };
+          contentDetails?: { duration?: string };
+          snippet?: { publishedAt?: string };
+        }>;
+      };
+
+      const returnedIds = new Set<string>();
+      for (const item of data.items ?? []) {
+        const videoId = item.id?.trim();
+        if (!videoId) continue;
+        returnedIds.add(videoId);
+
+        const isPlayable =
+          item.status?.privacyStatus === 'public' && item.status?.embeddable === true;
+        const durationSeconds = parseIsoDurationToSeconds(item.contentDetails?.duration);
+        result.set(videoId, {
+          videoId,
+          playable: isPlayable,
+          duration: durationSeconds > 0 ? formatDurationFromSeconds(durationSeconds) : undefined,
+          durationSeconds: durationSeconds > 0 ? durationSeconds : undefined,
+          addedAt: item.snippet?.publishedAt,
+        });
+      }
+
+      // Any ID not returned by videos.list is deleted or private -> mark non-playable
+      for (const id of batch) {
+        if (!returnedIds.has(id)) {
+          result.set(id, { videoId: id, playable: false });
+        }
+      }
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+// Re-check a list of YouTube video IDs every 24 hours so videos made private/unembeddable are dropped
+export async function checkPlayableYouTubeIdsWithCache(
+  videoIds: string[],
+  cacheKey: string
+): Promise<Map<string, VerifiedVideoMeta> | null> {
+  const uniqueIds = Array.from(new Set(videoIds.map((id) => id.trim()).filter(Boolean)));
+  if (uniqueIds.length === 0) return null;
+
+  const cached = await getSearchCache<VerifiedVideoMeta>(cacheKey);
+  const cachedAgeMs = cached ? Date.now() - Date.parse(cached.fetched_at) : Infinity;
+
+  if (
+    cached &&
+    Array.isArray(cached.results) &&
+    cachedAgeMs >= 0 &&
+    cachedAgeMs < STATUS_CHECK_MAX_AGE_MS
+  ) {
+    const map = new Map<string, VerifiedVideoMeta>();
+    for (const entry of cached.results) {
+      if (entry?.videoId) {
+        map.set(entry.videoId, {
+          ...entry,
+          playable: entry.playable !== false,
+        });
+      }
+    }
+    return map;
+  }
+
+  const fresh = await fetchPlayableVideoMetaMap(uniqueIds);
+  if (!fresh) {
+    if (cached && Array.isArray(cached.results) && cached.results.length > 0) {
+      const map = new Map<string, VerifiedVideoMeta>();
+      for (const entry of cached.results) {
+        if (entry?.videoId) {
+          map.set(entry.videoId, {
+            ...entry,
+            playable: entry.playable !== false,
+          });
+        }
+      }
+      return map;
+    }
+    return null;
+  }
+
+  await upsertSearchCache(cacheKey, Array.from(fresh.values()));
+  return fresh;
+}
+
 // Fetch public, embeddable 60+ minute movies from one trusted YouTube handle (never uses search.list).
 // Cached in Supabase search_cache under "channel:HANDLE" for 24 hours.
 export async function fetchTrustedChannelMoviesWithCache(
@@ -321,6 +442,7 @@ export async function fetchTrustedChannelMoviesWithCache(
             channelTitle?: string;
             description?: string;
             tags?: string[];
+            publishedAt?: string;
           };
         }>;
       };
@@ -349,6 +471,7 @@ export async function fetchTrustedChannelMoviesWithCache(
             : undefined,
           tags: Array.isArray(item.snippet?.tags) ? item.snippet!.tags.slice(0, 30) : undefined,
           sourceLabel: 'Official channel',
+          addedAt: item.snippet?.publishedAt,
         });
       }
     }
@@ -360,7 +483,38 @@ export async function fetchTrustedChannelMoviesWithCache(
   }
 }
 
-// One Creative Commons YouTube search cached in Supabase search_cache under "cc" for 72 hours
+// Re-filter Creative Commons items every 24h via videos.list so unembeddable/private videos drop out
+async function verifyCreativeCommonsList24h(
+  items: YouTubeSearchResult[]
+): Promise<YouTubeSearchResult[]> {
+  if (!YOUTUBE_API_KEY || items.length === 0) {
+    return items.map((item) => ({ ...item, sourceLabel: 'Creative Commons' }));
+  }
+
+  const playableMap = await checkPlayableYouTubeIdsWithCache(
+    items.map((i) => i.videoId),
+    'cc-status'
+  );
+  if (!playableMap) {
+    return items.map((item) => ({ ...item, sourceLabel: 'Creative Commons' }));
+  }
+
+  return items
+    .filter((item) => playableMap.has(item.videoId))
+    .map((item) => {
+      const meta = playableMap.get(item.videoId);
+      return {
+        ...item,
+        duration: item.duration ?? meta?.duration,
+        durationSeconds: item.durationSeconds ?? meta?.durationSeconds,
+        addedAt: item.addedAt ?? meta?.addedAt,
+        sourceLabel: 'Creative Commons',
+      };
+    });
+}
+
+// One Creative Commons YouTube search cached in Supabase search_cache under "cc" for 72 hours,
+// with 24-hour status re-checks to drop videos that stop being public or embeddable
 export async function fetchCreativeCommonsMoviesWithCache(): Promise<{
   results: YouTubeSearchResult[];
   error: boolean;
@@ -375,13 +529,8 @@ export async function fetchCreativeCommonsMoviesWithCache(): Promise<{
     cachedAgeMs >= 0 &&
     cachedAgeMs < CC_CACHE_MAX_AGE_MS
   ) {
-    return {
-      results: cached.results.map((item) => ({
-        ...item,
-        sourceLabel: 'Creative Commons',
-      })),
-      error: false,
-    };
+    const verified = await verifyCreativeCommonsList24h(cached.results);
+    return { results: verified, error: false };
   }
 
   const fallbackCached = () => {
@@ -428,11 +577,12 @@ export async function fetchCreativeCommonsMoviesWithCache(): Promise<{
           title?: string;
           channelTitle?: string;
           description?: string;
+          publishedAt?: string;
         };
       }>;
     };
 
-    const results: YouTubeSearchResult[] = (payload.items ?? [])
+    const rawResults: YouTubeSearchResult[] = (payload.items ?? [])
       .filter((item) => Boolean(item.id?.videoId))
       .map((item) => {
         const videoId = item.id!.videoId!;
@@ -445,11 +595,31 @@ export async function fetchCreativeCommonsMoviesWithCache(): Promise<{
             ? decodeHtmlEntities(item.snippet.description).slice(0, 600)
             : undefined,
           sourceLabel: 'Creative Commons',
+          addedAt: item.snippet?.publishedAt,
         };
       });
 
-    await upsertSearchCache(cacheKey, results);
-    return { results, error: false };
+    // Immediately verify public & embeddable status + durations via videos.list
+    const playableMap = await fetchPlayableVideoMetaMap(rawResults.map((r) => r.videoId));
+    const finalResults = playableMap
+      ? rawResults
+          .filter((item) => playableMap.has(item.videoId))
+          .map((item) => {
+            const meta = playableMap.get(item.videoId);
+            return {
+              ...item,
+              duration: meta?.duration ?? item.duration,
+              durationSeconds: meta?.durationSeconds ?? item.durationSeconds,
+              addedAt: meta?.addedAt ?? item.addedAt,
+            };
+          })
+      : rawResults;
+
+    await upsertSearchCache(cacheKey, finalResults);
+    if (playableMap) {
+      await upsertSearchCache('cc-status', Array.from(playableMap.values()));
+    }
+    return { results: finalResults, error: false };
   } catch {
     return fallbackCached();
   }

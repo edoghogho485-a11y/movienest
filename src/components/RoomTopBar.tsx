@@ -4,6 +4,7 @@ import { MovieNestLogo } from './MovieNestLogo';
 interface RoomTopBarProps {
   roomName: string;
   roomCode: string;
+  sourceLabel: string;
   isLocked: boolean;
   syncStatus: 'connecting' | 'synced' | 'reconnecting';
   dimLights: boolean;
@@ -14,10 +15,11 @@ interface RoomTopBarProps {
   onInvite: () => void;
 }
 
-// Slim room header row: two-triangle logo, room name, code (NEST-XXXXXX), Dim the lights, Invite
+// Slim room header row: two-triangle logo, room name, code (NEST-XXXXXX), source label, Dim the lights, Invite
 export function RoomTopBar({
   roomName,
   roomCode,
+  sourceLabel,
   isLocked,
   syncStatus,
   dimLights,
@@ -29,7 +31,7 @@ export function RoomTopBar({
 }: RoomTopBarProps) {
   return (
     <header className="flex items-center justify-between gap-2 min-w-0">
-      {/* Left: Back + two-triangle logo, room name, and code */}
+      {/* Left: Back + two-triangle logo, room name, code, and source label */}
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <button
           type="button"
@@ -54,7 +56,7 @@ export function RoomTopBar({
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs leading-tight min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs leading-tight min-w-0">
             <button
               type="button"
               onClick={onCopyCode}
@@ -65,6 +67,9 @@ export function RoomTopBar({
               <span>{roomCode}</span>
               {copied && <Check className="h-3 w-3" aria-hidden="true" />}
             </button>
+            <span className="shrink-0 rounded-full border border-[#3a322a] bg-[#1e1a16] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
+              {sourceLabel}
+            </span>
             <span className="text-[#3a322a] shrink-0" aria-hidden="true">
               ·
             </span>

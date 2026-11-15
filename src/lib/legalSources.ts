@@ -14,11 +14,14 @@ import {
   SharedLibraryItem,
 } from './supabase';
 import {
+  checkPlayableYouTubeIdsWithCache,
   fetchCreativeCommonsMoviesWithCache,
   fetchTrustedChannelMoviesWithCache,
   getYouTubeThumbnail,
   YouTubeSearchResult,
 } from './youtube';
+import { makeBrokenVideoKey } from './brokenVideos';
+import { isNewVideo, parseAddedAtMs } from './freshness';
 
 export interface TrustedGenreRowDefinition {
   slug: string;
@@ -226,7 +229,101 @@ export function ourPickToYouTubeResult(item: SharedLibraryItem): YouTubeSearchRe
     channelTitle: item.credit || item.category || 'Our picks',
     thumbnail: getYouTubeThumbnail(item.video_id),
     sourceLabel: 'Our picks',
+    addedAt: item.addedAt ?? item.created_at,
   };
+}
+
+// Resolve a human-readable source label for any video shown on cards or in the room header
+export function getVideoSourceLabel(
+  videoId: string,
+  sourceType: 'youtube' | 'archive',
+  catalog?: LegalCatalogState | null
+): string {
+  if (sourceType === 'archive') {
+    return 'Public domain';
+  }
+  if (!catalog || !videoId) {
+    return 'YouTube';
+  }
+  if (catalog.trustedVideos.some((v) => v.videoId === videoId)) {
+    return 'Official channel';
+  }
+  if (catalog.creativeCommons.some((v) => v.videoId === videoId)) {
+    return 'Creative Commons';
+  }
+  if (catalog.ourPicks.some((v) => v.video_id === videoId)) {
+    return 'Our picks';
+  }
+  return 'YouTube';
+}
+
+// Hide videos that failed playback on this device from every catalog list and genre row
+export function filterCatalogByBrokenVideos(
+  catalog: LegalCatalogState,
+  brokenKeys: Set<string>
+): LegalCatalogState {
+  if (brokenKeys.size === 0) return catalog;
+
+  const isYtAllowed = (videoId: string) =>
+    !brokenKeys.has(makeBrokenVideoKey('youtube', videoId));
+  const isArchiveAllowed = (identifier: string) =>
+    !brokenKeys.has(makeBrokenVideoKey('archive', identifier));
+
+  const trustedVideos = catalog.trustedVideos.filter((v) => isYtAllowed(v.videoId));
+  return {
+    trustedVideos,
+    trustedByGenre: groupTrustedVideosByGenre(trustedVideos),
+    creativeCommons: catalog.creativeCommons.filter((v) => isYtAllowed(v.videoId)),
+    archiveNew: catalog.archiveNew.filter((m) => isArchiveAllowed(m.identifier)),
+    archiveClassics: catalog.archiveClassics.filter((m) => isArchiveAllowed(m.identifier)),
+    ourPicks: catalog.ourPicks.filter((i) => isYtAllowed(i.video_id)),
+  };
+}
+
+export type NewThisWeekItem =
+  | { kind: 'youtube'; video: YouTubeSearchResult; addedAtMs: number }
+  | { kind: 'archive'; movie: ArchiveMovieItem; addedAtMs: number };
+
+// Merge videos added in the last 14 days from all 4 legal sources, newest first, up to 12
+export function getNewThisWeekItems(catalog: LegalCatalogState): NewThisWeekItem[] {
+  const seenKeys = new Set<string>();
+  const collected: NewThisWeekItem[] = [];
+
+  const ytCandidates = [
+    ...catalog.trustedVideos,
+    ...catalog.ourPicks.map(ourPickToYouTubeResult),
+    ...catalog.creativeCommons,
+  ];
+
+  for (const video of ytCandidates) {
+    if (!video.videoId) continue;
+    const key = `youtube:${video.videoId}`;
+    if (seenKeys.has(key)) continue;
+    if (!isNewVideo(video.addedAt)) continue;
+    const addedAtMs = parseAddedAtMs(video.addedAt);
+    if (addedAtMs === null) continue;
+    seenKeys.add(key);
+    collected.push({ kind: 'youtube', video, addedAtMs });
+  }
+
+  for (const movie of [...catalog.archiveNew, ...catalog.archiveClassics]) {
+    if (!movie.identifier) continue;
+    const key = `archive:${movie.identifier}`;
+    if (seenKeys.has(key)) continue;
+    const dateValue = movie.addedAt ?? movie.addeddate;
+    if (!isNewVideo(dateValue)) continue;
+    const addedAtMs = parseAddedAtMs(dateValue);
+    if (addedAtMs === null) continue;
+    seenKeys.add(key);
+    collected.push({
+      kind: 'archive',
+      movie: { ...movie, addedAt: dateValue },
+      addedAtMs,
+    });
+  }
+
+  collected.sort((a, b) => b.addedAtMs - a.addedAtMs);
+  return collected.slice(0, 12);
 }
 
 // Deduplicate YouTube videos by videoId preserving order
@@ -244,7 +341,7 @@ function dedupeYouTubeResults(items: YouTubeSearchResult[]): YouTubeSearchResult
   return out;
 }
 
-// Load all 4 legal movie sources in parallel, respecting each source's Supabase cache window
+// Load all 4 legal movie sources in parallel, respecting each source's 24h/72h cache & status checks
 export async function loadAllLegalSources(): Promise<LegalCatalogState> {
   const cleanHandles = trustedChannels
     .map((handle) => handle.trim())
@@ -273,6 +370,21 @@ export async function loadAllLegalSources(): Promise<LegalCatalogState> {
     fetchSharedLibrary(),
   ]);
 
+  // Re-check "Our picks" every 24h to drop any video that is no longer public or embeddable
+  let filteredOurPicks = libraryRes.items;
+  if (filteredOurPicks.length > 0) {
+    const statusMap = await checkPlayableYouTubeIdsWithCache(
+      filteredOurPicks.map((item) => item.video_id),
+      'library-status'
+    );
+    if (statusMap) {
+      filteredOurPicks = filteredOurPicks.filter((item) => {
+        const status = statusMap.get(item.video_id);
+        return !status || status.playable;
+      });
+    }
+  }
+
   const trustedVideos = dedupeYouTubeResults(
     trustedChannelBatches.flatMap((batch) => batch.results)
   );
@@ -283,7 +395,7 @@ export async function loadAllLegalSources(): Promise<LegalCatalogState> {
     creativeCommons: dedupeYouTubeResults(ccRes.results),
     archiveNew: archiveNewRes.results,
     archiveClassics: archiveClassicsRes.results,
-    ourPicks: libraryRes.items,
+    ourPicks: filteredOurPicks,
   };
 }
 

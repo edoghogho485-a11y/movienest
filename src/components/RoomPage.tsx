@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ExternalLink,
   Film,
+  Flag,
   ListVideo,
   Lock,
   MessageSquare,
@@ -20,7 +20,10 @@ import {
   getArchiveThumbnail,
   isValidArchiveDownloadUrl,
 } from '../lib/archive';
+import { markBrokenVideo } from '../lib/brokenVideos';
+import { getVideoSourceLabel, LegalCatalogState } from '../lib/legalSources';
 import { upsertWatchHistory } from '../lib/localLists';
+import { buildReportVideoMailto } from '../lib/report';
 import { copyTextToClipboard, ShareTarget } from '../lib/share';
 import {
   findRoomByCode,
@@ -173,6 +176,7 @@ interface RoomPageProps {
   room: RoomRecord;
   username: string;
   sharedLibrary: SharedLibraryItem[];
+  legalCatalog?: LegalCatalogState;
   justCreated?: boolean;
   onBack: () => void;
   onShare: (target: ShareTarget) => void;
@@ -260,6 +264,7 @@ export function RoomPage({
   room,
   username,
   sharedLibrary,
+  legalCatalog,
   justCreated = false,
   onBack,
   onShare,
@@ -455,6 +460,26 @@ export function RoomPage({
   const video = resolveRoomVideo(currentRoom.video_id, safeLibrary);
   const displayVideoTitle = resolvedTitle ?? video.title;
   const inviteLink = getInviteLink(currentRoom.code);
+  const activeVideoId = isArchive
+    ? currentRoom.video_id
+    : video.youtubeId || currentRoom.video_id;
+  const catalogSourceLabel = getVideoSourceLabel(
+    activeVideoId,
+    isArchive ? 'archive' : 'youtube',
+    legalCatalog
+  );
+  const currentSourceLabel =
+    !isArchive &&
+    catalogSourceLabel === 'YouTube' &&
+    safeLibrary.some((item) => item.video_id === activeVideoId)
+      ? 'Our picks'
+      : catalogSourceLabel;
+  const reportMailto = buildReportVideoMailto({
+    title: displayVideoTitle,
+    videoId: activeVideoId,
+    sourceType: isArchive ? 'archive' : 'youtube',
+    sourceLabel: currentSourceLabel,
+  });
   const currentThumbnail = isArchive
     ? getArchiveThumbnail(currentRoom.video_id)
     : getYouTubeThumbnail(video.youtubeId || currentRoom.video_id);
@@ -858,6 +883,7 @@ export function RoomPage({
         } else {
           setArchiveUrl(null);
           setArchiveError(true);
+          markBrokenVideo('archive', currentRoom.video_id);
         }
         setArchiveLoading(false);
       } else {
@@ -873,6 +899,7 @@ export function RoomPage({
             setArchiveUrl(details.mp4Url);
           } else {
             setArchiveError(true);
+            markBrokenVideo('archive', currentRoom.video_id);
           }
         }
       });
@@ -1288,7 +1315,11 @@ export function RoomPage({
             }
           },
           onError: (event) => {
-            if (!cancelled && (event.data === 101 || event.data === 150)) {
+            if (
+              !cancelled &&
+              (event.data === 100 || event.data === 101 || event.data === 150)
+            ) {
+              markBrokenVideo('youtube', video.youtubeId);
               setEmbedBlocked(true);
             }
           },
@@ -1906,6 +1937,7 @@ export function RoomPage({
             <RoomTopBar
               roomName={currentRoom.name}
               roomCode={currentRoom.code}
+              sourceLabel={currentSourceLabel}
               isLocked={isLocked}
               syncStatus={syncStatus}
               dimLights={dimLights}
@@ -1989,19 +2021,28 @@ export function RoomPage({
                   </div>
                   <div className="max-w-md space-y-1.5">
                     <p className="text-lg font-bold text-[#f4ece1]">
-                      This Archive movie couldn&apos;t load
+                      This video can&apos;t be played here
                     </p>
                     <p className="text-sm text-[#b9aa98]">
-                      The MP4 stream may be unavailable or temporarily slow on Internet Archive.
+                      This stream couldn&apos;t load, so we&apos;ve hidden it on this device.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={isHost ? () => setPickerOpen(true) : onBack}
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
-                  >
-                    <span>{isHost ? 'Pick another movie' : 'Back to MovieNest'}</span>
-                  </button>
+                  <div className="flex flex-wrap justify-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={isHost ? () => setPickerOpen(true) : onBack}
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
+                    >
+                      <span>Try another</span>
+                    </button>
+                    <a
+                      href={reportMailto}
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-5 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a]"
+                    >
+                      <Flag className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                      <span>Report this video</span>
+                    </a>
+                  </div>
                 </div>
               ) : (
                 <video
@@ -2097,7 +2138,10 @@ export function RoomPage({
                       void advanceQueueOnEnd();
                     }
                   }}
-                  onError={() => setArchiveError(true)}
+                  onError={() => {
+                    markBrokenVideo('archive', currentRoom.video_id);
+                    setArchiveError(true);
+                  }}
                   className={
                     isPhoneLandscape
                       ? 'h-full w-full bg-[#070605] object-contain'
@@ -2116,32 +2160,28 @@ export function RoomPage({
                 </div>
                 <div className="max-w-md space-y-1.5">
                   <p className="text-lg font-bold text-[#f4ece1]">
-                    This video&apos;s owner blocks embedding
+                    This video can&apos;t be played here
                   </p>
                   <p className="text-sm text-[#b9aa98]">
-                    YouTube doesn&apos;t allow this video to play inside external apps. You can
-                    open it directly on YouTube or switch to another movie.
+                    This video isn&apos;t available for embedded playback, so we&apos;ve hidden it
+                    on this device.
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-center gap-2.5">
-                  <a
-                    href={`https://www.youtube.com/watch?v=${encodeURIComponent(video.youtubeId)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f]"
+                  <button
+                    type="button"
+                    onClick={isHost ? () => setPickerOpen(true) : onBack}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[#f2a33a] px-6 py-2.5 text-sm font-bold text-[#1a1208] transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
                   >
-                    <span>Open on YouTube</span>
-                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                    <span>Try another</span>
+                  </button>
+                  <a
+                    href={reportMailto}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-5 py-2.5 text-sm font-medium text-[#f4ece1] transition-colors hover:border-[#f2a33a]"
+                  >
+                    <Flag className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                    <span>Report this video</span>
                   </a>
-                  {isHost && (
-                    <button
-                      type="button"
-                      onClick={() => setPickerOpen(true)}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[#3a322a] bg-[#1e1a16] px-5 py-2.5 text-sm font-medium text-[#f4ece1] hover:border-[#f2a33a] cursor-pointer"
-                    >
-                      <span>Change video</span>
-                    </button>
-                  )}
                 </div>
               </div>
             ) : (
@@ -2311,6 +2351,15 @@ export function RoomPage({
                 )}
               </button>
 
+              <a
+                href={reportMailto}
+                aria-label="Report this video"
+                title="Report this video"
+                className="inline-flex h-11 w-11 min-h-[44px] items-center justify-center rounded-full border border-[#3a322a] bg-[#1e1a16] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e]"
+              >
+                <Flag className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+              </a>
+
               {isHost && (
                 <button
                   type="button"
@@ -2354,13 +2403,26 @@ export function RoomPage({
               onSendReaction={handleSendReaction}
               reactionNote={reactionNote}
             />
-            <p className="truncate text-xs text-[#b9aa98]">
-              Now playing: <span className="font-medium text-[#f4ece1]">{displayVideoTitle}</span>
-            </p>
+            <div className="flex flex-wrap items-center gap-3 min-w-0">
+              <p className="truncate text-xs text-[#b9aa98]">
+                Now playing: <span className="font-medium text-[#f4ece1]">{displayVideoTitle}</span>
+                <span className="mx-1.5" aria-hidden="true">
+                  ·
+                </span>
+                <span>{currentSourceLabel}</span>
+              </p>
+              <a
+                href={reportMailto}
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-3.5 text-xs font-medium text-[#b9aa98] whitespace-nowrap transition-colors hover:border-[#f2a33a] hover:text-[#f4ece1]"
+              >
+                <Flag className="h-3.5 w-3.5 text-[#f2a33a] shrink-0" aria-hidden="true" />
+                <span>Report this video</span>
+              </a>
+            </div>
           </div>
         )}
 
-        {/* Laptop left column row 3: reaction bar + Now playing + Up Next queue */}
+        {/* Laptop left column row 3: reaction bar + Now playing + Report + Up Next queue */}
         {!isPhoneLandscape && !dimLights && (
           <div className="hidden lg:flex lg:col-start-1 lg:row-start-3 flex-col gap-4 pt-1">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2368,13 +2430,22 @@ export function RoomPage({
                 onSendReaction={handleSendReaction}
                 reactionNote={reactionNote}
               />
-              <p className="truncate text-xs text-[#b9aa98]">
-                Now playing: <span className="font-medium text-[#f4ece1]">{displayVideoTitle}</span>
-                <span className="mx-1.5" aria-hidden="true">
-                  ·
-                </span>
-                <span>{isArchive ? 'Internet Archive' : video.meta}</span>
-              </p>
+              <div className="flex flex-wrap items-center gap-3 min-w-0">
+                <p className="truncate text-xs text-[#b9aa98]">
+                  Now playing: <span className="font-medium text-[#f4ece1]">{displayVideoTitle}</span>
+                  <span className="mx-1.5" aria-hidden="true">
+                    ·
+                  </span>
+                  <span>{currentSourceLabel}</span>
+                </p>
+                <a
+                  href={reportMailto}
+                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#3a322a] bg-[#1e1a16] px-3.5 text-xs font-medium text-[#b9aa98] whitespace-nowrap transition-colors hover:border-[#f2a33a] hover:text-[#f4ece1]"
+                >
+                  <Flag className="h-3.5 w-3.5 text-[#f2a33a] shrink-0" aria-hidden="true" />
+                  <span>Report this video</span>
+                </a>
+              </div>
             </div>
 
             <RoomQueuePanel

@@ -523,6 +523,7 @@ export interface SharedLibraryItem {
   permission_note?: string | null;
   approved?: boolean | null;
   created_at: string;
+  addedAt: string;
 }
 
 // Load approved "Our picks" rows from the Supabase "library" table, newest first
@@ -546,16 +547,28 @@ export async function fetchSharedLibrary(): Promise<{
   const rows = Array.isArray(data) ? data : [];
   const items: SharedLibraryItem[] = rows
     .filter((row) => typeof row?.video_id === 'string' && row.video_id.trim().length > 0)
-    .map((row) => ({
-      id: row.video_id,
-      video_id: row.video_id.trim(),
-      title: typeof row.title === 'string' && row.title.trim() ? row.title.trim() : `YouTube Video (${row.video_id})`,
-      category: typeof row.category === 'string' && row.category.trim() ? row.category.trim() : 'Movies',
-      credit: typeof row.credit === 'string' ? row.credit.trim() : null,
-      permission_note: typeof row.permission_note === 'string' ? row.permission_note.trim() : null,
-      approved: true,
-      created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
-    }));
+    .map((row) => {
+      const createdAt =
+        typeof row.created_at === 'string' ? row.created_at : new Date().toISOString();
+      return {
+        id: row.video_id,
+        video_id: row.video_id.trim(),
+        title:
+          typeof row.title === 'string' && row.title.trim()
+            ? row.title.trim()
+            : `YouTube Video (${row.video_id})`,
+        category:
+          typeof row.category === 'string' && row.category.trim()
+            ? row.category.trim()
+            : 'Movies',
+        credit: typeof row.credit === 'string' ? row.credit.trim() : null,
+        permission_note:
+          typeof row.permission_note === 'string' ? row.permission_note.trim() : null,
+        approved: true,
+        created_at: createdAt,
+        addedAt: createdAt,
+      };
+    });
 
   return { items, error: null };
 }

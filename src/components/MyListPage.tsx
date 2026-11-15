@@ -8,10 +8,12 @@ import {
   WatchLaterItem,
 } from '../lib/localLists';
 import { BookmarkButton } from './BookmarkButton';
+import { CardActionMenu } from './CardActionMenu';
 
 interface MyListPageProps {
   watchLater: WatchLaterItem[];
   history: WatchHistoryItem[];
+  getSourceLabel?: (source: LocalMediaSource, id: string) => string;
   onWatchWatchLater: (item: WatchLaterItem) => void;
   onCreateRoomWatchLater: (item: WatchLaterItem) => void;
   onShareWatchLater: (item: WatchLaterItem) => void;
@@ -26,12 +28,12 @@ interface MyListPageProps {
 function ThumbnailThumb({
   thumbnail,
   title,
-  source,
+  sourceLabel,
   progressPercent,
 }: {
   thumbnail: string;
   title: string;
-  source: LocalMediaSource;
+  sourceLabel: string;
   progressPercent?: number;
 }) {
   const [imgError, setImgError] = useState(false);
@@ -55,11 +57,9 @@ function ThumbnailThumb({
         </div>
       )}
 
-      {source === 'archive' && (
-        <span className="absolute left-2 top-2 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
-          Archive
-        </span>
-      )}
+      <span className="absolute left-2 top-2 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
+        {sourceLabel}
+      </span>
 
       {typeof progressPercent === 'number' && progressPercent > 0 && (
         <div className="absolute inset-x-0 bottom-0 h-1.5 bg-[#3a322a]">
@@ -77,6 +77,7 @@ function ThumbnailThumb({
 export function MyListPage({
   watchLater,
   history,
+  getSourceLabel,
   onWatchWatchLater,
   onCreateRoomWatchLater,
   onShareWatchLater,
@@ -88,6 +89,13 @@ export function MyListPage({
   onClearHistory,
 }: MyListPageProps) {
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+
+  const resolveLabel = (source: LocalMediaSource, id: string) =>
+    getSourceLabel
+      ? getSourceLabel(source, id)
+      : source === 'archive'
+        ? 'Public domain'
+        : 'YouTube';
 
   return (
     <section className="px-4 py-6 sm:px-6 lg:px-8 space-y-10">
@@ -126,71 +134,71 @@ export function MyListPage({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {watchLater.map((item) => (
-              <article
-                key={`wl-${item.source}-${item.id}`}
-                className="flex flex-col rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3 transition-colors hover:border-[#f2a33a]"
-              >
-                <button
-                  type="button"
-                  onClick={() => onWatchWatchLater(item)}
-                  className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] active:opacity-80 rounded-xl cursor-pointer"
+            {watchLater.map((item) => {
+              const sourceLabel = resolveLabel(item.source, item.id);
+              return (
+                <article
+                  key={`wl-${item.source}-${item.id}`}
+                  className="flex flex-col rounded-2xl border border-[#3a322a] bg-[#1e1a16] p-3 transition-colors hover:border-[#f2a33a]"
                 >
-                  <ThumbnailThumb
-                    thumbnail={item.thumbnail}
-                    title={item.title}
-                    source={item.source}
-                  />
-                  <h3 className="mt-2.5 text-sm font-bold text-[#f4ece1] line-clamp-2 leading-snug group-hover:text-[#f2a33a] transition-colors">
-                    {item.title}
-                  </h3>
-                  <p className="mt-1 text-xs text-[#b9aa98]">
-                    {item.source === 'archive' ? 'Internet Archive' : 'YouTube'}
-                  </p>
-                </button>
-
-                <div className="mt-auto pt-3 flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => onWatchWatchLater(item)}
-                    className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-3 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
+                    className="group text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f2a33a] active:opacity-80 rounded-xl cursor-pointer"
                   >
-                    <Play className="h-3.5 w-3.5 fill-current shrink-0" aria-hidden="true" />
-                    <span>Watch</span>
+                    <ThumbnailThumb
+                      thumbnail={item.thumbnail}
+                      title={item.title}
+                      sourceLabel={sourceLabel}
+                    />
+                    <h3 className="mt-2.5 text-sm font-bold text-[#f4ece1] line-clamp-2 leading-snug group-hover:text-[#f2a33a] transition-colors">
+                      {item.title}
+                    </h3>
+                    <p className="mt-1 text-xs text-[#b9aa98]">{sourceLabel}</p>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onCreateRoomWatchLater(item)}
-                    aria-label={`Create room for ${item.title}`}
-                    title="Create Room"
-                    className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-                  >
-                    <Users className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-                  </button>
+                  <div className="mt-auto pt-3 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onWatchWatchLater(item)}
+                      className="inline-flex min-h-[44px] flex-1 min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-3 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
+                    >
+                      <Play className="h-3.5 w-3.5 fill-current shrink-0" aria-hidden="true" />
+                      <span>Watch</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onShareWatchLater(item)}
-                    aria-label={`Share ${item.title}`}
-                    title="Share"
-                    className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-                  >
-                    <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onCreateRoomWatchLater(item)}
+                      aria-label={`Create room for ${item.title}`}
+                      title="Create Room"
+                      className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
+                    >
+                      <Users className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onRemoveWatchLater(item.source, item.id)}
-                    aria-label={`Remove ${item.title} from Watch Later`}
-                    title="Remove from Watch Later"
-                    className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#b9aa98] transition-colors hover:border-[#f2a33a] hover:text-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </div>
-              </article>
-            ))}
+                    <button
+                      type="button"
+                      onClick={() => onShareWatchLater(item)}
+                      aria-label={`Share ${item.title}`}
+                      title="Share"
+                      className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
+                    >
+                      <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
+                    </button>
+
+                    <CardActionMenu
+                      title={item.title}
+                      videoId={item.id}
+                      sourceType={item.source}
+                      sourceLabel={sourceLabel}
+                      onRemove={() => onRemoveWatchLater(item.source, item.id)}
+                      removeLabel="Remove from Watch Later"
+                    />
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>
@@ -263,6 +271,7 @@ export function MyListPage({
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {history.map((item) => {
+              const sourceLabel = resolveLabel(item.source, item.id);
               const progressPercent = item.finished
                 ? 100
                 : getProgressPercent(item.position, item.duration);
@@ -285,7 +294,7 @@ export function MyListPage({
                     <ThumbnailThumb
                       thumbnail={item.thumbnail}
                       title={item.title}
-                      source={item.source}
+                      sourceLabel={sourceLabel}
                       progressPercent={progressPercent}
                     />
                     <h3 className="mt-2.5 text-sm font-bold text-[#f4ece1] line-clamp-2 leading-snug group-hover:text-[#f2a33a] transition-colors">
@@ -300,7 +309,7 @@ export function MyListPage({
                     <button
                       type="button"
                       onClick={() => onWatchHistory(item)}
-                      className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-3 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
+                      className="inline-flex min-h-[44px] flex-1 min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#f2a33a] px-3 py-2 text-xs font-bold text-[#1a1208] whitespace-nowrap transition-colors hover:bg-[#e5952b] active:bg-[#d6861f] cursor-pointer"
                     >
                       <Play className="h-3.5 w-3.5 fill-current shrink-0" aria-hidden="true" />
                       <span>{item.finished || item.position <= 0 ? 'Watch' : 'Resume'}</span>
@@ -324,25 +333,15 @@ export function MyListPage({
                       thumbnail={item.thumbnail}
                     />
 
-                    <button
-                      type="button"
-                      onClick={() => onShareHistory(item)}
-                      aria-label={`Share ${item.title}`}
-                      title="Share"
-                      className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#f4ece1] transition-colors hover:border-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-                    >
-                      <Share2 className="h-4 w-4 text-[#f2a33a]" aria-hidden="true" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onRemoveHistory(item.source, item.id)}
-                      aria-label={`Remove ${item.title} from History`}
-                      title="Remove from History"
-                      className="inline-flex h-11 w-11 min-h-[44px] shrink-0 items-center justify-center rounded-full border border-[#3a322a] bg-[#14110f] text-[#b9aa98] transition-colors hover:border-[#f2a33a] hover:text-[#f2a33a] active:bg-[#2a241e] cursor-pointer"
-                    >
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    <CardActionMenu
+                      title={item.title}
+                      videoId={item.id}
+                      sourceType={item.source}
+                      sourceLabel={sourceLabel}
+                      onShare={() => onShareHistory(item)}
+                      onRemove={() => onRemoveHistory(item.source, item.id)}
+                      removeLabel="Remove from History"
+                    />
                   </div>
                 </article>
               );

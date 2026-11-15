@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Film, Play, RefreshCw, Users, X } from 'lucide-react';
+import { Film, Flag, Play, RefreshCw, Users, X } from 'lucide-react';
 import { ArchiveMovieItem } from '../lib/archive';
+import { isNewVideo } from '../lib/freshness';
 import { LegalPickItem, MOOD_DEFINITIONS, MoodId } from '../lib/moodCatalog';
+import { buildReportVideoMailto } from '../lib/report';
 import { YouTubeSearchResult } from '../lib/youtube';
 import { ArchiveMovieCard } from './ArchiveMovieCard';
 import { BookmarkButton } from './BookmarkButton';
@@ -73,6 +75,19 @@ export function HomeMoodResults({
     const itemId = isArchive ? surpriseItem.movie.identifier : surpriseItem.video.videoId;
     const itemTitle = isArchive ? surpriseItem.movie.title : surpriseItem.video.title;
     const itemThumb = isArchive ? surpriseItem.movie.thumbnail : surpriseItem.video.thumbnail;
+    const itemSourceLabel = isArchive
+      ? 'Public domain'
+      : surpriseItem.video.sourceLabel ?? 'YouTube';
+    const itemAddedAt = isArchive
+      ? surpriseItem.movie.addedAt ?? surpriseItem.movie.addeddate
+      : surpriseItem.video.addedAt;
+    const itemIsNew = isNewVideo(itemAddedAt);
+    const reportMailto = buildReportVideoMailto({
+      title: itemTitle,
+      videoId: itemId,
+      sourceType: isArchive ? 'archive' : 'youtube',
+      sourceLabel: itemSourceLabel,
+    });
     const itemSubtitle = isArchive
       ? surpriseItem.movie.year
         ? `${surpriseItem.movie.year} · Public domain`
@@ -123,6 +138,16 @@ export function HomeMoodResults({
                 <div className="flex h-full w-full items-center justify-center">
                   <Film className="h-8 w-8 text-[#f2a33a]" aria-hidden="true" />
                 </div>
+              )}
+
+              <span className="absolute left-2.5 top-2.5 rounded-full border border-[#3a322a] bg-[#14110f] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#f4ece1]">
+                {itemSourceLabel}
+              </span>
+
+              {itemIsNew && (
+                <span className="absolute right-2.5 top-2.5 rounded-full bg-[#f2a33a] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#1a1208]">
+                  New
+                </span>
               )}
             </div>
 
@@ -177,6 +202,16 @@ export function HomeMoodResults({
                   title={itemTitle}
                   thumbnail={itemThumb}
                 />
+
+                <a
+                  href={reportMailto}
+                  aria-label={`Report ${itemTitle}`}
+                  title="Report this video"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full border border-[#3a322a] bg-[#14110f] px-3.5 py-2 text-xs font-medium text-[#b9aa98] whitespace-nowrap transition-colors hover:border-[#f2a33a] hover:text-[#f4ece1]"
+                >
+                  <Flag className="h-3.5 w-3.5 text-[#f2a33a] shrink-0" aria-hidden="true" />
+                  <span>Report this video</span>
+                </a>
               </div>
             </div>
           </div>
@@ -224,7 +259,7 @@ export function HomeMoodResults({
                 <YouTubeMovieCard
                   key={`mood-yt-${selectedMood}-${entry.video.videoId}`}
                   video={entry.video}
-                  className="w-[240px] sm:w-[270px] shrink-0 snap-start"
+                  className="w-[260px] sm:w-[276px] shrink-0 snap-start"
                   onWatch={onWatchChoiceYouTube}
                   onCreateRoom={onWatchTogetherYouTube}
                   onShare={onShareYouTube}
@@ -233,7 +268,7 @@ export function HomeMoodResults({
                 <ArchiveMovieCard
                   key={`mood-ar-${selectedMood}-${entry.movie.identifier}`}
                   movie={entry.movie}
-                  className="w-[240px] sm:w-[270px] shrink-0 snap-start"
+                  className="w-[260px] sm:w-[276px] shrink-0 snap-start"
                   onWatch={onWatchChoiceArchive}
                   onCreateRoom={onWatchTogetherArchive}
                   onShare={onShareArchive}
