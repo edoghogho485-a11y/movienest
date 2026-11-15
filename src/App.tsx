@@ -879,6 +879,12 @@ export default function App() {
   const visibleContinueWatching = continueWatching.filter(
     (item) => !brokenVideoKeys.has(makeBrokenVideoKey(item.source, item.id))
   );
+  const visibleWatchLater = watchLater.filter(
+    (item) => !brokenVideoKeys.has(makeBrokenVideoKey(item.source, item.id))
+  );
+  const visibleHistory = history.filter(
+    (item) => !brokenVideoKeys.has(makeBrokenVideoKey(item.source, item.id))
+  );
 
   const visibleSurpriseItem =
     surpriseItem &&
@@ -1377,8 +1383,8 @@ export default function App() {
                 </section>
               ) : activeNav === 'my-list' ? (
                 <MyListPage
-                  watchLater={watchLater}
-                  history={history}
+                  watchLater={visibleWatchLater}
+                  history={visibleHistory}
                   getSourceLabel={(source, id) =>
                     getVideoSourceLabel(id, source, legalCatalog)
                   }
