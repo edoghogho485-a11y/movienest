@@ -26,6 +26,7 @@ import { FEATURED_VIDEOS } from './data/videos';
 import { ArchiveMovieItem, getArchiveThumbnail } from './lib/archive';
 import { WatchHistoryItem, WatchLaterItem } from './lib/localLists';
 import {
+  getHeroFeaturedMoviesFromCache,
   getMoodVideosFromCache,
   getTonightsPicksFromCache,
   loadCachedMoodAndPickRows,
@@ -237,6 +238,7 @@ export default function App() {
   // Cached genre rows and Tonight's picks for Home mood filters (zero extra YouTube searches)
   const [cachedGenreVideos, setCachedGenreVideos] = useState<Record<string, YouTubeSearchResult[]>>({});
   const [cachedFullMovies, setCachedFullMovies] = useState<YouTubeSearchResult[]>([]);
+  const [heroMoviesReady, setHeroMoviesReady] = useState(false);
   const [selectedMood, setSelectedMood] = useState<MoodId | null>(null);
   const [surpriseVideo, setSurpriseVideo] = useState<YouTubeSearchResult | null>(null);
   const moodCacheLoadedRef = useRef(false);
@@ -365,10 +367,14 @@ export default function App() {
   useEffect(() => {
     if (watchingVideo || moodCacheLoadedRef.current) return;
     moodCacheLoadedRef.current = true;
-    void loadCachedMoodAndPickRows().then(({ bySlug, fullMovies }) => {
-      setCachedGenreVideos((prev) => ({ ...bySlug, ...prev }));
-      setCachedFullMovies(fullMovies);
-    });
+    void loadCachedMoodAndPickRows()
+      .then(({ bySlug, fullMovies }) => {
+        setCachedGenreVideos((prev) => ({ ...bySlug, ...prev }));
+        setCachedFullMovies(fullMovies);
+      })
+      .finally(() => {
+        setHeroMoviesReady(true);
+      });
   }, [watchingVideo]);
 
   const handleGenreVideosLoaded = useCallback((slug: string, videos: YouTubeSearchResult[]) => {
@@ -838,6 +844,7 @@ export default function App() {
     selectedMood && selectedMood !== 'surprise'
       ? getMoodVideosFromCache(selectedMood, cachedGenreVideos)
       : [];
+  const heroFeaturedMovies = getHeroFeaturedMoviesFromCache(cachedGenreVideos, cachedFullMovies);
   const tonightsPicks = getTonightsPicksFromCache(cachedGenreVideos, cachedFullMovies);
 
   const handleSelectMood = (moodId: MoodId) => {
@@ -1349,12 +1356,24 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  {/* Home page order: TopBar (above), 2-panel Hero + Moods, Mood Results, Continue Watching, Tonight's picks, Footer (below) */}
+                  {/* Home page order: TopBar (above), 2-panel Hero Carousel + Moods, Mood Results, Continue Watching, Tonight's picks, Footer (below) */}
                   <HeroBanner
                     onlineCount={onlineCount}
                     selectedMood={selectedMood}
+                    featuredMovies={heroFeaturedMovies}
+                    featuredMoviesReady={heroMoviesReady}
                     onStartRoom={() => openCreateRoom()}
                     onWatchAlone={handleHeroWatchAlone}
+                    onWatchMovieTogether={openCreateRoomFromSearch}
+                    onWatchMovieAlone={(video) =>
+                      enterWatchAlone({
+                        id: video.videoId,
+                        title: video.title,
+                        category: video.channelTitle || 'Movie',
+                        youtubeId: video.videoId,
+                        thumbnail: video.thumbnail,
+                      })
+                    }
                     onSelectMood={handleSelectMood}
                   />
 

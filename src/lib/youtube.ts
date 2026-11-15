@@ -15,6 +15,7 @@ export interface YouTubeSearchResult {
   title: string;
   channelTitle: string;
   thumbnail: string;
+  duration?: string;
 }
 
 export interface YTPlayer {
@@ -24,6 +25,9 @@ export interface YTPlayer {
   getCurrentTime: () => number;
   getDuration?: () => number;
   getPlayerState: () => number;
+  mute?: () => void;
+  unMute?: () => void;
+  isMuted?: () => boolean;
   destroy: () => void;
 }
 
@@ -125,6 +129,10 @@ export function extractYouTubeId(rawInput: string): string | null {
 
 export function getYouTubeThumbnail(videoId: string): string {
   return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+}
+
+export function getYouTubeMaxResThumbnail(videoId: string): string {
+  return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
 }
 
 // Fetch the video's title from YouTube's public oEmbed endpoint (no API key needed)

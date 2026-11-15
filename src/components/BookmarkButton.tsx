@@ -9,6 +9,7 @@ interface BookmarkButtonProps {
   title: string;
   thumbnail: string;
   variant?: 'icon' | 'button';
+  tabIndex?: number;
   className?: string;
 }
 
@@ -20,6 +21,7 @@ export function BookmarkButton({
   title,
   thumbnail,
   variant = 'icon',
+  tabIndex,
   className = '',
 }: BookmarkButtonProps) {
   const { isSaved, toggleWatchLater } = useLocalLists();
@@ -39,6 +41,7 @@ export function BookmarkButton({
     return (
       <button
         type="button"
+        tabIndex={tabIndex}
         onClick={handleToggle}
         aria-pressed={saved}
         aria-label={saved ? `Remove ${title} from Watch Later` : `Save ${title} to Watch Later`}
@@ -62,6 +65,7 @@ export function BookmarkButton({
   return (
     <button
       type="button"
+      tabIndex={tabIndex}
       onClick={handleToggle}
       aria-pressed={saved}
       aria-label={saved ? `Remove ${title} from Watch Later` : `Save ${title} to Watch Later`}

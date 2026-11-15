@@ -218,6 +218,64 @@ export function getMoodVideosFromCache(
   return getFallbackCatalogVideos();
 }
 
+export interface HeroFeaturedMovie {
+  video: YouTubeSearchResult;
+  categoryLabel: string;
+}
+
+// Pick up to 4 featured movies (slides 2-5) from already-cached Nollywood, Full Movies, and Action rows
+export function getHeroFeaturedMoviesFromCache(
+  cachedBySlug: Record<string, YouTubeSearchResult[]>,
+  fullMoviesCache: YouTubeSearchResult[]
+): HeroFeaturedMovie[] {
+  const nollywoodPool = dedupeYouTubeVideos([
+    ...(cachedBySlug['nollywood-movies'] ?? []),
+    ...(cachedBySlug['new-nollywood'] ?? []),
+    ...(cachedBySlug['nollywood-comedy'] ?? []),
+    ...(cachedBySlug['nollywood-romance'] ?? []),
+  ]);
+  const fullMoviesPool = dedupeYouTubeVideos(fullMoviesCache);
+  const actionPool = dedupeYouTubeVideos(cachedBySlug['action'] ?? []);
+
+  const buckets: Array<{ items: YouTubeSearchResult[]; label: string }> = [
+    { items: nollywoodPool, label: 'Nollywood' },
+    { items: fullMoviesPool, label: 'Full Movie' },
+    { items: actionPool, label: 'Action' },
+  ];
+
+  const picked: HeroFeaturedMovie[] = [];
+  const seenIds = new Set<string>();
+  const cursors = buckets.map(() => 0);
+
+  // Round-robin across the 3 cached categories so slides 2-5 stay a varied mix
+  while (picked.length < 4) {
+    let addedInPass = false;
+
+    for (let b = 0; b < buckets.length && picked.length < 4; b++) {
+      const bucket = buckets[b];
+      while (cursors[b] < bucket.items.length) {
+        const candidate = bucket.items[cursors[b]];
+        cursors[b] += 1;
+        if (!candidate?.videoId || seenIds.has(candidate.videoId)) continue;
+        seenIds.add(candidate.videoId);
+        picked.push({
+          video: {
+            ...candidate,
+            thumbnail: candidate.thumbnail || getYouTubeThumbnail(candidate.videoId),
+          },
+          categoryLabel: bucket.label,
+        });
+        addedInPass = true;
+        break;
+      }
+    }
+
+    if (!addedInPass) break;
+  }
+
+  return picked;
+}
+
 // Build Tonight's picks (4-8 items) from cached Nollywood + Full Movies rows, falling back to open library
 export function getTonightsPicksFromCache(
   cachedBySlug: Record<string, YouTubeSearchResult[]>,
